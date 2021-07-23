@@ -21,6 +21,7 @@ class BoardWidget(QWidget):
         
     def __init__(self, presHexMainWindow, board):
         super().__init__(presHexMainWindow)
+        self.presHexMainWindow = presHexMainWindow
         self.preferences = presHexMainWindow.preferences
         self.setMinimumSize(256, 256/math.sqrt(3))
         self.setFocusPolicy(Qt.ClickFocus)
@@ -212,6 +213,7 @@ class BoardWidget(QWidget):
             self.minimaxWorker = self.MinimaxWorker(self.minimax,self.preferences.minimaxSize,self.preferences.minimaxMargin)
             self.minimaxWorker.finished.connect(self.finishedMinimax)
             self.minimaxWorker.start()
+            self.presHexMainWindow.workingStatusChanged(True)
             QApplication.instance().setOverrideCursor(Qt.WaitCursor)
         
     def finishedMinimax(self):
@@ -223,6 +225,7 @@ class BoardWidget(QWidget):
                 if move:
                     self.move(move)
             self.minimaxWorker = None
+            self.presHexMainWindow.workingStatusChanged(False)
             QApplication.instance().restoreOverrideCursor()         
         
     def keyPressEvent(self, event):
@@ -286,14 +289,16 @@ class PreferencesDialog(QDialog):
         form.setLayout(formLayout)
         layout = QVBoxLayout()
         layout.addWidget(form)
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttonBox.accepted.connect(self.accept)
-        buttonBox.rejected.connect(self.reject)
-        layout.addWidget(buttonBox)
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        layout.addWidget(self.buttonBox)
         self.setLayout(layout)
         self.setWindowTitle("Preferences")
         self.setFixedWidth(256)
         self.setModal(True)
+
+    def show(self):
         super().show()
         self.setFixedSize(self.size())
 
@@ -303,14 +308,18 @@ class PreferencesDialog(QDialog):
         self.preferences.minimaxMargin = self.minimaxMarginSpinBox.value()
         self.preferences.save()
         super().accept()
+        
+    def workingStatusChanged(self, working):
+        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(not working)
 
 class PresHexMainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
         self.preferences = PresHexPreferences()
+        self.preferencesDialog = PreferencesDialog(self)
         fileMenu = QMenu("&File", self)
-        fileMenu.addAction("&Preferences", self.preferencesDialog)
+        fileMenu.addAction("&Preferences", self.preferencesDialogExec)
         fileMenu.addAction("&Exit", self.exit)
         self.menuBar().addMenu(fileMenu)
         self.updateBoardSize()
@@ -329,6 +338,10 @@ class PresHexMainWindow(QMainWindow):
                 boardWidget.deleteLater()
         self.setCentralWidget(BoardWidget(self,Board(size = self.preferences.boardSize)))
         
+        
+    def workingStatusChanged(self, working):
+        self.preferencesDialog.workingStatusChanged(working)
+        
     def working(self):
         boardWidget = self.boardWidget()
         if boardWidget:
@@ -336,12 +349,11 @@ class PresHexMainWindow(QMainWindow):
         else:
             return False
         
-    def preferencesDialog(self):
-        if not self.working():
-            dialog = PreferencesDialog(self)
-            dialog.exec_()
-            if dialog.result() == dialog.Accepted:
-                self.updateBoardSize()
+    def preferencesDialogExec(self):
+        self.preferencesDialog.show()
+        self.preferencesDialog.exec_()
+        if self.preferencesDialog.result() == self.preferencesDialog.Accepted:
+            self.updateBoardSize()
                 
     def exit(self):
         self.close()
