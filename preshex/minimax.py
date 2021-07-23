@@ -148,7 +148,8 @@ class Minimax(object):
         if self.root:
             return self.root.bestPath()
 
-    def expandToSize(self, size, margin, aborted = lambda:False):
+    def expand(self, size, margin, aborted = lambda:False):
+        fully = False
         while self.size() >= size:
             print(f"minimax.size: {self.size()}", file = sys.stderr)            
             if self.prune(margin) <= 0:
@@ -164,6 +165,7 @@ class Minimax(object):
                     print(f"minimax expansion aborted", file = sys.stderr)
                     break
                 if not self.expandLeaf():
+                    fully = True
                     break
             else:
                 continue
@@ -172,6 +174,7 @@ class Minimax(object):
             print(f"minimax.size: {self.size()}", file = sys.stderr)            
             if self.prune(margin) <= 0:
                 break
+        return fully
 
     def prune(self, amount):
         pruned = 0

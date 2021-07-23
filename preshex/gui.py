@@ -196,7 +196,7 @@ class BoardWidget(QWidget):
         @pyqtSlot()
         def run(self):
             try:
-                self.minimax.expandToSize(self.size,self.margin,self.aborted)
+                self.minimax.expand(self.size,self.margin,self.aborted)
             finally:
                 self.finished.emit()
         
@@ -210,26 +210,33 @@ class BoardWidget(QWidget):
         if self.minimaxWorker is None:
             self.minimax.setRootBoard(self.board)
             self.minimaxWorker = self.MinimaxWorker(self.minimax,self.preferences.minimaxSize,self.preferences.minimaxMargin)
-            self.minimaxWorker.finished.connect(self.stopMinimax)
+            self.minimaxWorker.finished.connect(self.finishedMinimax)
             self.minimaxWorker.start()
             QApplication.instance().setOverrideCursor(Qt.WaitCursor)
         
-    def stopMinimax(self):
+    def finishedMinimax(self):
         if self.minimaxWorker:
             self.minimaxWorker.wait()
+            print(f"minimax.leafValue: {self.minimax.leafValue()} .leafDistance: {self.minimax.leafDistance()}", file = sys.stderr)
+            if not self.minimaxWorker.aborted():        
+                move = self.minimax.bestMove()
+                if move:
+                    self.move(move)
             self.minimaxWorker = None
-            print(f"minimax.leafValue: {self.minimax.leafValue()} .leafDistance: {self.minimax.leafDistance()}", file = sys.stderr)        
-            move = self.minimax.bestMove()
-            if move:
-                self.move(move)
             QApplication.instance().restoreOverrideCursor()         
         
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Space:
             if self.minimaxWorker:
                 self.minimaxWorker.abort()
+                move = self.minimax.bestMove()
+                if move:
+                    self.move(move)
             else:
                 self.startMinimax()
+        elif event.key() == Qt.Key_Escape:
+            if self.minimaxWorker:
+                self.minimaxWorker.abort()
 
 class PresHexPreferences(SinglePreferences):
     
