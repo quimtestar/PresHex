@@ -3,21 +3,25 @@ from PyQt5.QtCore import (
                     QSize
                 )
 from PyQt5.QtWidgets import (
-                    QApplication, QWidget, QMainWindow
+                    QApplication, QWidget, QMainWindow, QMenu, QDialog, QLineEdit,
+                    QFormLayout, QVBoxLayout, QDialogButtonBox, QSpinBox
                 )
 from PyQt5.QtGui import (
-                    QPainter, QColor, QPolygonF,
+                    QPainter, QColor, QPolygonF, QIntValidator
                 )
 import math
 import numpy as np
 import sys
 from board import Board,Move
 from minimax import Minimax
+from pypref import SinglePreferences
+import os
 
 class BoardWidget(QWidget):
         
-    def __init__(self, parent, board):
-        super().__init__(parent)
+    def __init__(self, presHexMainWindow, board):
+        super().__init__(presHexMainWindow)
+        self.preferences = presHexMainWindow.preferences
         self.setFocusPolicy(Qt.ClickFocus)
         self.setFocus()
         self.board = board
@@ -201,7 +205,7 @@ class BoardWidget(QWidget):
     def startMinimax(self):
         if self.minimaxWorker is None:
             self.minimax.setRootBoard(self.board)
-            self.minimaxWorker = self.MinimaxWorker(self.minimax,2**22,2**10)
+            self.minimaxWorker = self.MinimaxWorker(self.minimax,self.preferences.minimaxSize,self.preferences.minimaxMargin)
             self.minimaxWorker.finished.connect(self.stopMinimax)
             self.minimaxWorker.start()
             QApplication.instance().setOverrideCursor(Qt.WaitCursor)
@@ -222,14 +226,101 @@ class BoardWidget(QWidget):
                 self.minimaxWorker.abort()
             else:
                 self.startMinimax()
+
+class PresHexPreferences(SinglePreferences):
+    
+    def __init__(self):
+        super().__init__(directory = os.path.join(os.path.expanduser("~"),".config/PresHex"))
+        self.boardSize = self.preferences.get("boardSize",7)
+        self.minimaxSize = self.preferences.get("minimaxSize",2**20)
+        self.minimaxMargin = self.preferences.get("minimaxMargin",2**10)
+        
+        
+    def dict(self):
+        return {
+                "boardSize": self.boardSize,
+                "minimaxSize": self.minimaxSize,
+                "minimaxMargin": self.minimaxMargin,
+            }
+        
+    def save(self):
+        self.set_preferences(self.dict())
+
+    def __repr__(self):
+        return str(self.dict())
+
+           
+class PreferencesDialog(QDialog):
+    
+    def __init__(self,presHexMainWindow):
+        super().__init__(presHexMainWindow)
+        self.preferences = presHexMainWindow.preferences
+        self.boardSizeSpinBox = QSpinBox(self)
+        self.boardSizeSpinBox.setMinimum(1)
+        self.boardSizeSpinBox.setMaximum(50)
+        self.boardSizeSpinBox.setValue(self.preferences.boardSize)
+        self.minimaxSizeSpinBox = QSpinBox(self)
+        self.minimaxSizeSpinBox.setMinimum(0)
+        self.minimaxSizeSpinBox.setMaximum(2**30)
+        self.minimaxSizeSpinBox.setValue(self.preferences.minimaxSize)
+        self.minimaxMarginSpinBox = QSpinBox(self)
+        self.minimaxMarginSpinBox.setMinimum(0)
+        self.minimaxMarginSpinBox.setMaximum(2**20)
+        self.minimaxMarginSpinBox.setValue(self.preferences.minimaxMargin)
+        form = QWidget()
+        formLayout = QFormLayout()
+        formLayout.addRow(self.tr("&Board size"),self.boardSizeSpinBox)
+        formLayout.addRow(self.tr("&Minimax size"),self.minimaxSizeSpinBox)
+        formLayout.addRow(self.tr("&Minimax margin"),self.minimaxMarginSpinBox)
+        form.setLayout(formLayout)
+        layout = QVBoxLayout()
+        layout.addWidget(form)
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        layout.addWidget(buttonBox)
+        self.setLayout(layout)
+        self.setWindowTitle("Preferences")
+        self.setFixedWidth(256)
+        self.setModal(True)
+        super().show()
+        self.setFixedSize(self.size())
+
+    def accept(self):
+        self.preferences.boardSize = self.boardSizeSpinBox.value()
+        self.preferences.minimaxSize = self.minimaxSizeSpinBox.value()
+        self.preferences.minimaxMargin = self.minimaxMarginSpinBox.value()
+        self.preferences.save()
+        super().accept()
            
 class PresHexMainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        board = Board(size = 1)
-        boardWidget = BoardWidget(self,board)
-        self.setCentralWidget(boardWidget)
+        self.preferences = PresHexPreferences()
+        fileMenu = QMenu("&File", self)
+        fileMenu.addAction("&Preferences", self.preferencesDialog)
+        fileMenu.addAction("&Exit", self.exit)
+        self.menuBar().addMenu(fileMenu)
+        self.updateBoardSize()
+        
+    def updateBoardSize(self):
+        boardWidget = self.centralWidget()
+        if boardWidget:
+            if boardWidget.board.size == self.preferences.boardSize:
+                return
+            else:
+                boardWidget.deleteLater()
+        self.setCentralWidget(BoardWidget(self,Board(size = self.preferences.boardSize)))
+        
+    def preferencesDialog(self):
+        dialog = PreferencesDialog(self)
+        dialog.exec_()
+        if dialog.result() == dialog.Accepted:
+            self.updateBoardSize()
+                
+    def exit(self):
+        self.close()
         
         
         
