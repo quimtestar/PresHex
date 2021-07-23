@@ -1,5 +1,5 @@
 from board import Board, Move
-from gui import PresHexMainWindow
+from gui import PresHexMainWindow, PresHexApplication
 from minimax import Minimax
 import random
 from PyQt5.QtWidgets import (
@@ -9,9 +9,7 @@ import sys
 import math
 
 def gui():
-    board = Board(size = 4)
-    app = QApplication(sys.argv)
-    app.setApplicationName("PresHex")
+    app = PresHexApplication()
     window = PresHexMainWindow()
     window.show()
     app.exec_()

@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
                     QFormLayout, QVBoxLayout, QDialogButtonBox, QSpinBox
                 )
 from PyQt5.QtGui import (
-                    QPainter, QColor, QPolygonF, QIntValidator
+                    QPainter, QColor, QPolygonF, QIntValidator, QIcon
                 )
 import math
 import numpy as np
@@ -296,7 +296,7 @@ class PreferencesDialog(QDialog):
         self.preferences.minimaxMargin = self.minimaxMarginSpinBox.value()
         self.preferences.save()
         super().accept()
-           
+
 class PresHexMainWindow(QMainWindow):
     
     def __init__(self):
@@ -338,6 +338,21 @@ class PresHexMainWindow(QMainWindow):
                 
     def exit(self):
         self.close()
+
+
+def presHexIcon():
+    if getattr(sys, "frozen", False):
+        return QIcon(os.path.join(sys._MEIPASS,"preshex.png"))
+    else:
+        return QIcon(os.path.join(os.path.dirname(os.path.realpath(__file__)),"icons/preshex.png"))
+           
+class PresHexApplication(QApplication):
+    
+    def __init__(self):
+        super().__init__(sys.argv)
+        self.setApplicationName("PresHex")
+        self.setWindowIcon(presHexIcon())
+        
         
         
         
