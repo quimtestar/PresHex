@@ -21,8 +21,8 @@ class BoardWidget(QWidget):
         
     def __init__(self, presHexMainWindow, board):
         super().__init__(presHexMainWindow)
-        self.setMinimumSize(256, 256/math.sqrt(3))
         self.preferences = presHexMainWindow.preferences
+        self.setMinimumSize(256, 256/math.sqrt(3))
         self.setFocusPolicy(Qt.ClickFocus)
         self.setFocus()
         self.board = board
@@ -30,6 +30,9 @@ class BoardWidget(QWidget):
         self.historyPointer = 0
         self.minimax = Minimax()
         self.minimaxWorker = None
+        
+    def working(self):
+        return self.minimaxWorker is not None
       
     def sizeHint(self):
         return QSize(1024,1024/math.sqrt(3))
@@ -123,7 +126,7 @@ class BoardWidget(QWidget):
             return self.history[self.historyPointer-1]
 
     def mousePressEvent(self,event):
-        if self.minimaxWorker is None:
+        if not self.working():
             o,r,u,v = self.oruv()
             p = event.localPos()
             
@@ -150,7 +153,7 @@ class BoardWidget(QWidget):
         super().mousePressEvent(event)
         
     def wheelEvent(self,event):
-        if self.minimaxWorker is None:
+        if not self.working():
             if event.angleDelta().y() > 0:
                 try:
                     self.moveBack()
@@ -304,9 +307,14 @@ class PresHexMainWindow(QMainWindow):
         fileMenu.addAction("&Exit", self.exit)
         self.menuBar().addMenu(fileMenu)
         self.updateBoardSize()
+       
+    def boardWidget(self):
+        centralWidget = self.centralWidget()
+        if isinstance(centralWidget,BoardWidget):
+            return centralWidget
         
     def updateBoardSize(self):
-        boardWidget = self.centralWidget()
+        boardWidget = self.boardWidget()
         if boardWidget:
             if boardWidget.board.size == self.preferences.boardSize:
                 return
@@ -314,11 +322,19 @@ class PresHexMainWindow(QMainWindow):
                 boardWidget.deleteLater()
         self.setCentralWidget(BoardWidget(self,Board(size = self.preferences.boardSize)))
         
+    def working(self):
+        boardWidget = self.boardWidget()
+        if boardWidget:
+            return boardWidget.working()
+        else:
+            return False
+        
     def preferencesDialog(self):
-        dialog = PreferencesDialog(self)
-        dialog.exec_()
-        if dialog.result() == dialog.Accepted:
-            self.updateBoardSize()
+        if not self.working():
+            dialog = PreferencesDialog(self)
+            dialog.exec_()
+            if dialog.result() == dialog.Accepted:
+                self.updateBoardSize()
                 
     def exit(self):
         self.close()
