@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
                     QFormLayout, QVBoxLayout, QDialogButtonBox, QSpinBox
                 )
 from PyQt5.QtGui import (
-                    QPainter, QColor, QPolygonF, QIntValidator, QIcon
+                    QPainter, QColor, QPolygonF, QIntValidator, QIcon, QKeySequence
                 )
 import math
 import numpy as np
@@ -215,6 +215,13 @@ class BoardWidget(QWidget):
             self.minimaxWorker.start()
             self.presHexMainWindow.workingStatusChanged(True)
             QApplication.instance().setOverrideCursor(Qt.WaitCursor)
+            
+    def stopMinimax(self):
+        if self.minimaxWorker:
+            self.minimaxWorker.abort()
+            move = self.minimax.bestMove()
+            if move:
+                self.move(move)
         
     def finishedMinimax(self):
         if self.minimaxWorker:
@@ -231,10 +238,7 @@ class BoardWidget(QWidget):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Space:
             if self.minimaxWorker:
-                self.minimaxWorker.abort()
-                move = self.minimax.bestMove()
-                if move:
-                    self.move(move)
+                self.stopMinimax()
             else:
                 self.startMinimax()
         elif event.key() == Qt.Key_Escape:
@@ -322,6 +326,11 @@ class PresHexMainWindow(QMainWindow):
         fileMenu.addAction("&Preferences", self.preferencesDialogExec)
         fileMenu.addAction("&Exit", self.exit)
         self.menuBar().addMenu(fileMenu)
+        thinkMenu = QMenu("&Think", self)
+        self.startThinkingAction = thinkMenu.addAction("&Start", self.startThinking, QKeySequence(Qt.Key_Space))
+        self.stopThinkingAction = thinkMenu.addAction("&Stop", self.stopThinking, QKeySequence(Qt.Key_Space))
+        self.stopThinkingAction.setEnabled(False)
+        self.menuBar().addMenu(thinkMenu)
         self.updateBoardSize()
        
     def boardWidget(self):
@@ -341,6 +350,8 @@ class PresHexMainWindow(QMainWindow):
         
     def workingStatusChanged(self, working):
         self.preferencesDialog.workingStatusChanged(working)
+        self.startThinkingAction.setEnabled(not working)
+        self.stopThinkingAction.setEnabled(working)
         
     def working(self):
         boardWidget = self.boardWidget()
@@ -354,6 +365,16 @@ class PresHexMainWindow(QMainWindow):
         self.preferencesDialog.exec_()
         if self.preferencesDialog.result() == self.preferencesDialog.Accepted:
             self.updateBoardSize()
+            
+    def startThinking(self):
+        boardWidget = self.boardWidget()
+        if boardWidget:
+            boardWidget.startMinimax()
+    
+    def stopThinking(self):
+        boardWidget = self.boardWidget()
+        if boardWidget:
+            boardWidget.stopMinimax()
                 
     def exit(self):
         self.close()
