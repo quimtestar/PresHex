@@ -21,6 +21,7 @@ class BoardWidget(QWidget):
         
     def __init__(self, presHexMainWindow, board):
         super().__init__(presHexMainWindow)
+        self.setMinimumSize(256, 256/math.sqrt(3))
         self.preferences = presHexMainWindow.preferences
         self.setFocusPolicy(Qt.ClickFocus)
         self.setFocus()
