@@ -73,7 +73,6 @@ class Minimax(object):
         def successorSortKey(self, s):
             v = s.leafValue() * self.valueFactor
             return (v, -s.leafDistance() * v, -len(s.bestMovesAndSuccessors())) 
-            #return (v, -s.leafDistance() * (2 * (v >= 0) - 1)) 
 
         def makeSuccessors(self):
             assert self.successors is None
