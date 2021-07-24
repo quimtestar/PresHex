@@ -2,6 +2,9 @@ import sys
 import functools
 from collections import deque
 import random
+import math
+import time
+import numpy as np
 
 class Minimax(object):
 
@@ -17,7 +20,10 @@ class Minimax(object):
             self._bestMovesAndSuccessors = None
         
         def ownValue(self):
-            return self.board.winner
+            if self.board.winner:
+                return self.board.winner
+            else:
+                return math.tanh((-2 * (self.board.pendingDistancePos() - self.board.pendingDistanceNeg()) + self.board.turn)/(2 * self.board.size + 1))
 
         def bestLeaf(self):
             if self._bestLeaf is None:
@@ -69,11 +75,17 @@ class Minimax(object):
         
         def leafDistance(self):
             return self.bestLeaf()[1]
+        
+        def meanSuccessorLeafValue(self):
+            if self.successors:
+                return np.mean(np.fromiter(map(lambda w: w[1].leafValue(),self.successors),dtype=float))
+            else:
+                return 0
 
         def successorSortKey(self, s):
             v = s.leafValue() * self.valueFactor
             return (v, -s.leafDistance() * v, -len(s.bestMovesAndSuccessors())) 
-
+ 
         def makeSuccessors(self):
             assert self.successors is None
             self.successors = list(map(lambda move: (move, self.minimax.node(self.board.moveOnCopy(move))),self.board.possibleMoves()))
@@ -153,13 +165,14 @@ class Minimax(object):
         
     def bestChainStr(self):
         chain = self.bestChain()
-        return f"{[m for m,s in chain]}: {chain[-1][1].ownValue()}" if chain else ""
+        return f"{[m for m,s in chain]}: {chain[-1][1].ownValue():.2f}" if chain else ""
 
     def statusText(self):
         return f"({self.size()}) {self.bestChainStr()}"
 
-    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False):
+    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1):
         fully = False
+        t0 = time.time()
         while self.size() >= size:
             if self.prune(margin) <= 0:
                 break
@@ -172,6 +185,9 @@ class Minimax(object):
             while self.size() < size0 + margin:
                 if aborted():
                     break
+                if time.time() - t0 >= statusInterval:
+                    status(self.statusText())
+                    t0 = time.time()
                 if not self.expandLeaf():
                     fully = True
                     break

@@ -1,6 +1,7 @@
 import numpy as np
 from collections import deque
 import sys
+import itertools
 
 
 class Move(object):
@@ -65,6 +66,8 @@ class Board(object):
         self.floodPos = np.zeros((size,)*2,dtype=bool) 
         self.floodNeg = np.zeros((size,)*2,dtype=bool) 
         self.winner = 0
+        self._pendingDistancePos = None
+        self._pendingDistanceNeg = None
 
     def copy(self):
         board = Board(self.size)
@@ -189,6 +192,51 @@ class Board(object):
     def connectedPathNeg(self):
         if self.connectedNeg():
             return self.findPath(self.floodNeg,(range(self.size),[0]*self.size),(range(self.size),[-1]*self.size))
+        
+    def computePendingDistance(self,flood,turn,index0,index1):
+        distances = np.full(flood.shape,np.inf,dtype = float)
+        for m in map(lambda w:Move(*w),zip(*index0)):
+            v = self.cell(m) * turn
+            if v == 0:
+                d = 1
+            elif v > 0:
+                d = 0
+            else:
+                d = np.inf
+            if d < distances[m.i,m.j]:
+                distances[m.i,m.j] = d
+        #distances[flood] = 0
+        unvisited = set(map(lambda w:Move(*w),itertools.product(*(range(self.size),)*2))) 
+        while unvisited:
+            move = min(unvisited, key = lambda m:distances[m.i,m.j])
+            for m in filter(lambda m: self.inBoard(m) and m in unvisited, move.adjacents()):
+                v = self.cell(m) * turn
+                if v == 0:
+                    d = 1
+                elif v > 0:
+                    d = 0
+                else:
+                    d = np.inf
+                if distances[move.i,move.j] + d < distances[m.i,m.j]:
+                    distances[m.i,m.j] = distances[move.i,move.j] + d
+            unvisited.remove(move)
+        return np.min(distances[index1])
+    
+    def computePendingDistancePos(self):
+        return self.computePendingDistance(self.floodPos,1,([0]*self.size,range(self.size)),([-1]*self.size,range(self.size)))
+        
+    def computePendingDistanceNeg(self):
+        return self.computePendingDistance(self.floodNeg,-1,(range(self.size),[0]*self.size),(range(self.size),[-1]*self.size))
+    
+    def pendingDistancePos(self):
+        if self._pendingDistancePos is None:
+            self._pendingDistancePos = self.computePendingDistancePos()
+        return self._pendingDistancePos
+
+    def pendingDistanceNeg(self):
+        if self._pendingDistanceNeg is None:
+            self._pendingDistanceNeg = self.computePendingDistanceNeg()
+        return self._pendingDistanceNeg
                 
     def __str__(self):
         return str({"board": self.cells, "turn": self.turn})
