@@ -107,11 +107,12 @@ class Minimax(object):
                     if node.reset():
                         stack.extend(node.parentBoards)
             
-        def bestPath(self):
-            if self.successors:
-                return [ self ] + self.bestSuccessor().bestPath()
+        def bestChain(self):
+            m,s = self.bestMoveAndSuccessor()
+            if m and s:
+                return [(m, s)] + s.bestChain()
             else:
-                return [ self ]
+                return []
 
         def trace(self, indent = 0, rank = 0, file = sys.stdout):
             self.board.trace(indent, file = file)
@@ -144,25 +145,32 @@ class Minimax(object):
         if self.root:
             return self.root.expandLeaf()
 
-    def bestPath(self):
+    def bestChain(self):
         if self.root:
-            return self.root.bestPath()
+            return self.root.bestChain()
+        else:
+            return []
+        
+    def bestChainStr(self):
+        chain = self.bestChain()
+        return f"{[m for m,s in chain]}: {chain[-1][1].ownValue()}" if chain else ""
+
+    def statusText(self):
+        return f"({self.size()}) {self.bestChainStr()}"
 
     def expand(self, size, margin, aborted = lambda:False):
         fully = False
         while self.size() >= size:
-            print(f"minimax.size: {self.size()}", file = sys.stderr)            
             if self.prune(margin) <= 0:
                 break
         while self.size() < size + margin:
             while self.size() >= size:
                 if self.prune(margin) <= 0:
                     break
-            print(f"minimax.size: {self.size()}", file = sys.stderr)
             size0 = self.size()
+            print(f" -> {self.statusText()}", file = sys.stderr)
             while self.size() < size0 + margin:
                 if aborted():
-                    print(f"minimax expansion aborted", file = sys.stderr)
                     break
                 if not self.expandLeaf():
                     fully = True
@@ -171,9 +179,9 @@ class Minimax(object):
                 continue
             break
         while self.size() >= size:
-            print(f"minimax.size: {self.size()}", file = sys.stderr)            
             if self.prune(margin) <= 0:
                 break
+        print(f" -> {self.statusText()}", file = sys.stderr)
         return fully
 
     def prune(self, amount):

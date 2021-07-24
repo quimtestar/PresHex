@@ -226,7 +226,6 @@ class BoardWidget(QWidget):
     def finishedMinimax(self):
         if self.minimaxWorker:
             self.minimaxWorker.wait()
-            print(f"minimax.leafValue: {self.minimax.leafValue()} .leafDistance: {self.minimax.leafDistance()}", file = sys.stderr)
             if not self.minimaxWorker.aborted():        
                 move = self.minimax.bestMove()
                 if move:
