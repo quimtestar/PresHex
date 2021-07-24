@@ -174,6 +174,7 @@ class BoardWidget(QWidget):
     class MinimaxWorker(QObject):
         
         finished = pyqtSignal()
+        status = pyqtSignal(str)
         
         def __init__(self,minimax,size,margin):
             super().__init__()
@@ -197,7 +198,7 @@ class BoardWidget(QWidget):
         @pyqtSlot()
         def run(self):
             try:
-                self.minimax.expand(self.size,self.margin,self.aborted)
+                self.minimax.expand(self.size, self.margin, status = self.statusEmit, aborted = self.aborted)
             finally:
                 self.finished.emit()
         
@@ -206,11 +207,15 @@ class BoardWidget(QWidget):
             
         def aborted(self):
             return self.aborted_
+        
+        def statusEmit(self,s):
+            self.status.emit(s)
     
     def startMinimax(self):
         if self.minimaxWorker is None:
             self.minimax.setRootBoard(self.board)
             self.minimaxWorker = self.MinimaxWorker(self.minimax,self.preferences.minimaxSize,self.preferences.minimaxMargin)
+            self.minimaxWorker.status.connect(self.presHexMainWindow.status)
             self.minimaxWorker.finished.connect(self.finishedMinimax)
             self.minimaxWorker.start()
             self.presHexMainWindow.workingStatusChanged(True)
@@ -330,6 +335,7 @@ class PresHexMainWindow(QMainWindow):
         self.stopThinkingAction = thinkMenu.addAction("&Stop", self.stopThinking, QKeySequence(Qt.Key_Space))
         self.stopThinkingAction.setEnabled(False)
         self.menuBar().addMenu(thinkMenu)
+        self.statusBar().show()
         self.updateBoardSize()
        
     def boardWidget(self):
@@ -374,6 +380,10 @@ class PresHexMainWindow(QMainWindow):
         boardWidget = self.boardWidget()
         if boardWidget:
             boardWidget.stopMinimax()
+
+    def status(self,s):
+         self.statusBar().showMessage(s,10000)
+         print(s,file = sys.stderr)
                 
     def exit(self):
         self.close()

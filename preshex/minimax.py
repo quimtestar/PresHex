@@ -158,7 +158,7 @@ class Minimax(object):
     def statusText(self):
         return f"({self.size()}) {self.bestChainStr()}"
 
-    def expand(self, size, margin, aborted = lambda:False):
+    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False):
         fully = False
         while self.size() >= size:
             if self.prune(margin) <= 0:
@@ -168,7 +168,7 @@ class Minimax(object):
                 if self.prune(margin) <= 0:
                     break
             size0 = self.size()
-            print(f" -> {self.statusText()}", file = sys.stderr)
+            status(self.statusText())
             while self.size() < size0 + margin:
                 if aborted():
                     break
@@ -181,7 +181,7 @@ class Minimax(object):
         while self.size() >= size:
             if self.prune(margin) <= 0:
                 break
-        print(f" -> {self.statusText()}", file = sys.stderr)
+        status(self.statusText())
         return fully
 
     def prune(self, amount):
