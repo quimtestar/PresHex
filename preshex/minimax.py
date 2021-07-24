@@ -184,7 +184,7 @@ class Minimax(object):
         status(self.statusText())
         return fully
 
-    def prune(self, amount):
+    def prune(self, amount = 0):
         pruned = 0
         while self.pruneDeque and (amount <= 0 or pruned < amount):
             node = self.pruneDeque.popleft()
@@ -197,6 +197,11 @@ class Minimax(object):
                             s.parentBoards.remove(node_.board)
                             self.pruneDeque.appendleft(s)
         return pruned
+    
+    def purge(self):
+        self.nodes = {}
+        self.pruneDeque = deque()
+        self.root = None
 
     def size(self):
         return len(self.nodes)

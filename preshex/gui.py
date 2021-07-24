@@ -248,6 +248,21 @@ class BoardWidget(QWidget):
         elif event.key() == Qt.Key_Escape:
             if self.minimaxWorker:
                 self.minimaxWorker.abort()
+                
+    def pruneMinimax(self):
+        try:
+            QApplication.instance().setOverrideCursor(Qt.WaitCursor)
+            self.minimax.prune()
+        finally:
+            QApplication.instance().restoreOverrideCursor()         
+
+    def purgeMinimax(self):
+        try:
+            QApplication.instance().setOverrideCursor(Qt.WaitCursor)
+            self.minimax.purge()
+        finally:
+            QApplication.instance().restoreOverrideCursor()         
+            
 
 class PresHexPreferences(SinglePreferences):
     
@@ -334,6 +349,8 @@ class PresHexMainWindow(QMainWindow):
         self.startThinkingAction = thinkMenu.addAction("&Start", self.startThinking, QKeySequence(Qt.Key_Space))
         self.stopThinkingAction = thinkMenu.addAction("&Stop", self.stopThinking, QKeySequence(Qt.Key_Space))
         self.stopThinkingAction.setEnabled(False)
+        self.pruneMinimaxAction = thinkMenu.addAction("&Prune memory", self.pruneMinimax)
+        self.purgeMinimaxAction = thinkMenu.addAction("&Purge memory", self.purgeMinimax)
         self.menuBar().addMenu(thinkMenu)
         self.statusBar().show()
         self.updateBoardSize()
@@ -357,6 +374,8 @@ class PresHexMainWindow(QMainWindow):
         self.preferencesDialog.workingStatusChanged(working)
         self.startThinkingAction.setEnabled(not working)
         self.stopThinkingAction.setEnabled(working)
+        self.pruneMinimaxAction.setEnabled(not working)
+        self.purgeMinimaxAction.setEnabled(not working)
         
     def working(self):
         boardWidget = self.boardWidget()
@@ -380,6 +399,17 @@ class PresHexMainWindow(QMainWindow):
         boardWidget = self.boardWidget()
         if boardWidget:
             boardWidget.stopMinimax()
+            
+    def pruneMinimax(self):
+        boardWidget = self.boardWidget()
+        if boardWidget:
+            boardWidget.pruneMinimax()
+        
+    def purgeMinimax(self):
+        boardWidget = self.boardWidget()
+        if boardWidget:
+            boardWidget.purgeMinimax()
+        
 
     def status(self,s):
          self.statusBar().showMessage(s,10000)
