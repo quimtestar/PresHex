@@ -7,7 +7,8 @@ from PyQt5.QtWidgets import (
                     QFormLayout, QVBoxLayout, QDialogButtonBox, QSpinBox
                 )
 from PyQt5.QtGui import (
-                    QPainter, QColor, QPolygonF, QIntValidator, QIcon, QKeySequence
+                    QPainter, QColor, QPolygonF, QIntValidator, QIcon, QKeySequence,
+                    QFont, QFontMetrics
                 )
 import math
 import numpy as np
@@ -16,6 +17,7 @@ from board import Board,Move
 from minimax import Minimax
 from pypref import SinglePreferences
 import os
+
 
 class BoardWidget(QWidget):
         
@@ -73,6 +75,29 @@ class BoardWidget(QWidget):
         painter.setBrush(color(-1))
         painter.drawConvexPolygon(center(-1,-1),o,center(self.board.size,-1))
         painter.drawConvexPolygon(center(self.board.size,self.board.size),o,center(-1,self.board.size))
+        
+        
+        font = QFont("Monospace")
+        font.setPixelSize(r/(2*math.sqrt(3)))
+        fontMetrics = QFontMetrics(font)
+        painter.setFont(font)
+        painter.setPen(QColor(0,0,0))
+        for i in range(self.board.size):
+            s = Move.columnName(i)
+            br = fontMetrics.boundingRect(s)
+            c = (2*center(i,-1) + center(i,0))/3
+            painter.drawText(c-(br.topLeft()+br.bottomRight())/2,s)
+            c = (2*center(i,self.board.size) + center(i,self.board.size-1))/3
+            painter.drawText(c-(br.topLeft()+br.bottomRight())/2,s)
+            
+        painter.setPen(QColor(255,255,255))
+        for j in range(self.board.size):
+            s = str(j)
+            br = fontMetrics.boundingRect(s)
+            c = (2*center(-1,j) + center(0,j))/3
+            painter.drawText(c-(br.topLeft()+br.bottomRight())/2,s)
+            c = (2*center(self.board.size,j) + center(self.board.size-1,j))/3
+            painter.drawText(c-(br.topLeft()+br.bottomRight())/2,s)
 
         def hexagon(c):
             return QPolygonF(c + r * QPointF(math.cos(k*2*math.pi/6),math.sin(k*2*math.pi/6)) for k in range(6))
@@ -412,7 +437,7 @@ class PresHexMainWindow(QMainWindow):
         
 
     def status(self,s):
-         self.statusBar().showMessage(s,10000)
+         self.statusBar().showMessage(s,60*1000)
          print(s,file = sys.stderr)
                 
     def exit(self):
