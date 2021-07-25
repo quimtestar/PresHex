@@ -205,7 +205,6 @@ class Board(object):
                 d = np.inf
             if d < distances[m.i,m.j]:
                 distances[m.i,m.j] = d
-        #distances[flood] = 0
         unvisited = set(map(lambda w:Move(*w),itertools.product(*(range(self.size),)*2))) 
         while unvisited:
             move = min(unvisited, key = lambda m:distances[m.i,m.j])
