@@ -17,6 +17,7 @@ from board import Board,Move
 from minimax import Minimax
 from pypref import SinglePreferences
 import os
+import threading
 
 
 class BoardWidget(QWidget):
@@ -222,6 +223,7 @@ class BoardWidget(QWidget):
         
         @pyqtSlot()
         def run(self):
+            threading.current_thread().setName("Minimax")
             try:
                 self.minimax.expand(self.size, self.margin, status = self.statusEmit, aborted = self.aborted)
             finally:
