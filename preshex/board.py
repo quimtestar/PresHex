@@ -18,6 +18,22 @@ class Move(object):
     
     def __eq__(self,other):
         return isinstance(other, Move) and (self.i, self.j) == (other.i, other.j)
+
+    def initial(self,turn):
+        if turn > 0:
+            return self.i <= 0 
+        elif turn < 0:
+            return self.j <= 0
+        else:
+            return False
+        
+    def final(self,turn,size):
+        if turn > 0:
+            return self.i >= size
+        elif turn < 0:
+            return self.j >= size
+        else:
+            return False 
     
     def adjacent(self,other):
         return -1 <= (self.i - other.i)*(self.j - other.j) <= 0 and 0 < max(abs(self.i - other.i), abs(self.j - other.j)) <= 1
@@ -119,11 +135,11 @@ class Board(object):
             if connection:
                 flood |= connected
         if self.turn > 0:
-            updateFlood(self.floodPos,lambda m:m.i <= 0)
+            updateFlood(self.floodPos,lambda m:m.initial(1))
             if self.connectedPos():
                 self.winner = self.turn
         elif self.turn < 0:
-            updateFlood(self.floodNeg,lambda m:m.j <= 0)
+            updateFlood(self.floodNeg,lambda m:m.initial(-1))
             if self.connectedNeg():
                 self.winner = self.turn
         self.turn *= -1
