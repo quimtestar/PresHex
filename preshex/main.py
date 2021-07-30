@@ -16,12 +16,12 @@ def gui():
 
 def minimax():
     board = Board(size = 4)
-    minimax = Minimax(board)
+    minimax = Minimax(board,Board.pendingDistanceHeuristic)
     minimax.expand(2**22,2**10)
 
 if __name__ == '__main__':
     gui()
-#    minimax()
+    #minimax()
 
     
     

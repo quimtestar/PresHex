@@ -143,6 +143,8 @@ class Board(object):
             if self.connectedNeg():
                 self.winner = self.turn
         self.turn *= -1
+        self._pendingDistancePos = None
+        self._pendingDistanceNeg = None
         
     def moveOnCopy(self, move):
         board = self.copy()
@@ -171,6 +173,8 @@ class Board(object):
         elif self.turn < 0:
             updateFlood(self.floodNeg,[ Move(i,0) for i in range(self.size) ])
         self.winner = 0
+        self._pendingDistancePos = None
+        self._pendingDistanceNeg = None
         
     def possibleMoves(self):
         return filter(lambda m:self.validMove(m),(Move(i,j) for i,j in zip(*np.where(self.cells==0))))
@@ -252,6 +256,16 @@ class Board(object):
         if self._pendingDistanceNeg is None:
             self._pendingDistanceNeg = self.computePendingDistanceNeg()
         return self._pendingDistanceNeg
+                
+    def pendingDistanceHeuristic(self):
+        if self.winner == 0:
+            n2 = self.pendingDistanceNeg()**2
+            p2 = self.pendingDistancePos()**2
+            ts = self.turn/2 * (self.pendingDistanceNeg() + self.pendingDistancePos())
+            td = self.turn/2 * (self.pendingDistanceNeg() - self.pendingDistancePos())
+            return (n2 - p2 + ts) / (n2 + p2 + td)
+        else:
+            return self.winner
                 
     def __str__(self):
         return str({"board": self.cells, "turn": self.turn})

@@ -32,7 +32,7 @@ class BoardWidget(QWidget):
         self.board = board
         self.history = []
         self.historyPointer = 0
-        self.minimax = Minimax()
+        self.minimax = Minimax(heuristic = Board.pendingDistanceHeuristic)
         self.minimaxWorker = None
         
     def working(self):

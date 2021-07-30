@@ -23,11 +23,7 @@ class Minimax(object):
             if self.board.winner:
                 return self.board.winner
             else:
-                n2 = self.board.pendingDistanceNeg()**2
-                p2 = self.board.pendingDistancePos()**2
-                ts = self.board.turn/2 * (self.board.pendingDistanceNeg() + self.board.pendingDistancePos())
-                td = self.board.turn/2 * (self.board.pendingDistanceNeg() - self.board.pendingDistancePos())
-                return (n2 - p2 + ts) / (n2 + p2 + td)
+                return self.minimax.heuristic(self.board)
                 
 
         def bestLeaf(self):
@@ -139,8 +135,9 @@ class Minimax(object):
                     s.trace(indent = indent + 8, rank = r, file = file)
             
     
-    def __init__(self,board = None):
+    def __init__(self,board = None, heuristic = lambda board:0):
         self.nodes = {}
+        self.heuristic = heuristic
         self.pruneDeque = deque()
         self.root = None
         if board:
