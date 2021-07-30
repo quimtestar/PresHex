@@ -23,7 +23,12 @@ class Minimax(object):
             if self.board.winner:
                 return self.board.winner
             else:
-                return math.tanh((-2 * (self.board.pendingDistancePos() - self.board.pendingDistanceNeg()) + self.board.turn)/(2 * self.board.size + 1))
+                n2 = self.board.pendingDistanceNeg()**2
+                p2 = self.board.pendingDistancePos()**2
+                ts = self.board.turn/2 * (self.board.pendingDistanceNeg() + self.board.pendingDistancePos())
+                td = self.board.turn/2 * (self.board.pendingDistanceNeg() - self.board.pendingDistancePos())
+                return (n2 - p2 + ts) / (n2 + p2 + td)
+                
 
         def bestLeaf(self):
             if self._bestLeaf is None:
