@@ -15,7 +15,7 @@ set_session(tf.Session(config=config))
 tf.get_logger().setLevel('INFO')
 
 
-def generator(boardSize, batchSize = 256):
+def heuristicDataGenerator(boardSize, batchSize = 256):
     def cellsGenerator():
         board = Board(boardSize)
         while True:
@@ -43,10 +43,10 @@ def generator(boardSize, batchSize = 256):
                 yield inputBatch[p], outputBatch[p]
                 i = 0
 
-def makeDataSegment(boardSize, size, segment):
+def makeHeuristicDataSegment(boardSize, size, segment):
     x = []
     y = []
-    for i,(inputBatch,outputBatch) in enumerate(generator(boardSize,256)):
+    for i,(inputBatch,outputBatch) in enumerate(heuristicDataGenerator(boardSize,256)):
         x.append(inputBatch)
         y.append(outputBatch)
         print(f"s: {segment}  i: {i}")
@@ -54,20 +54,17 @@ def makeDataSegment(boardSize, size, segment):
             break
     return np.concatenate(x), np.concatenate(y)
                 
-def makeData(boardSize, size, processes = 16):
+def makeHeuristicData(boardSize, size, processes = 16):
     with Pool(processes) as pool:
         x = []
         y = []
-        for result in [pool.apply_async(makeDataSegment, args=(boardSize, size//processes, segment)) for segment in range(processes)]:
+        for result in [pool.apply_async(makeHeuristicDataSegment, args=(boardSize, size//processes, segment)) for segment in range(processes)]:
             x_, y_ = result.get()
             x.append(x_)
             y.append(y_)
         return np.concatenate(x), np.concatenate(y)
         
-        
-
-def initialize(boardSize):
-    """
+def generateModel(boardSize):
     model = Sequential()
     model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
     model.add(Conv2D(filters = 16,kernel_size = (3,3),activation = "tanh"))
@@ -77,12 +74,15 @@ def initialize(boardSize):
     model.add(Dense(units = 16, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
     model.compile(loss = "mean_absolute_error", optimizer = "SGD")
-    """
+    return model
+        
+
+def heuristicTrain(boardSize):
+    #model = generateModel(boardSize)
     model = load_model("model.h5")
     model.summary()
-    
 
-    x, y = makeData(boardSize, 2**20)
+    x, y = makeHeuristicData(boardSize, 2**20)
 
     while True:
         history = model.fit(
@@ -97,9 +97,8 @@ def initialize(boardSize):
         model.save("model.h5")
     
     
-def test(boardSize):
+def heuristicTest(boardSize):
     model = load_model("model.h5")
-      
     x, y = makeData(boardSize, 2**12)
     ev = model.evaluate(x,y, verbose = 2)
     print(ev)     
@@ -110,8 +109,8 @@ def test(boardSize):
     
     
 if __name__ == '__main__':
-    initialize(7)
-    #test(7)
+    heuristicTrain(7)
+    #heuristicTest(7)
 
     
     
