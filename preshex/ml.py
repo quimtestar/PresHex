@@ -138,8 +138,10 @@ def minimaxTrain(boardSize):
     for board,value in minimax.collectLeafValues():
         cells.append(board.cells)
         values.append(value)
+    del minimax
     input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
     output = np.zeros((len(values),) + (1,))
+    del cells, values
     input[:,0,:,1] = 1
     input[:,-1,:,1] = 1
     input[:,:,0,-1] = -1
