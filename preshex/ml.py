@@ -131,13 +131,37 @@ class Predictor(object):
 def minimaxTrain(boardSize):
     model = load_model("model.h5")
     model.summary()
-    minimax = Minimax(Board(boardSize),heuristic = Predictor(board.size).predict)
-    minimax.expand(10000,1000)
+    minimax = Minimax(Board(boardSize),heuristic = Predictor(boardSize).predict)
+    minimax.expand(1000000,1000)
+    cells = []
+    values = []
     for board,value in minimax.collectLeafValues():
-        board.trace()
-        print(value)
-        print("-------")
-        print()
+        cells.append(board.cells)
+        values.append(value)
+    input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
+    output = np.zeros((len(values),) + (1,))
+    input[:,0,:,1] = 1
+    input[:,-1,:,1] = 1
+    input[:,:,0,-1] = -1
+    input[:,:,-1,-1] = -1
+    input[:,:,:,0] = cells
+    output[:,0] = values
+    x,y = input, output
+    while True:
+        history = model.fit(
+                x,
+                y,
+                batch_size = 64,
+                shuffle = True,
+                epochs = 1,
+                verbose = 2,
+                validation_split = 0.0625)
+        
+        model.save("model.h5")
+    
+        
+        
+        
     
     
 if __name__ == '__main__':

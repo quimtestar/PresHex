@@ -16,15 +16,20 @@ class Minimax(object):
             self.valueFactor = board.turn
             self.parentBoards = set()
             self.successors = None
+            self._ownValue = None
             self._bestLeaf = None
             self._bestMovesAndSuccessors = None
         
-        def ownValue(self):
+        def computeOwnValue(self):
             if self.board.winner:
                 return self.board.winner
             else:
                 return self.minimax.heuristic(self.board)
-                
+        
+        def ownValue(self):
+            if self._ownValue is None:
+                self._ownValue = self.computeOwnValue()
+            return self._ownValue
 
         def bestLeaf(self):
             if self._bestLeaf is None:
@@ -44,7 +49,9 @@ class Minimax(object):
                         best.append(w)
                         if k > pivot:
                             items_.append(w)
-                items = items_    
+                items = items_
+            if self.successors and not best:
+                print(f"successors: {self.successors}, best:{best}")  
             return best
         
         def bestMovesAndSuccessors(self):
@@ -62,7 +69,10 @@ class Minimax(object):
             return self.bestMoveAndSuccessor()[0]
         
         def bestSuccessor(self):
-            return self.bestMoveAndSuccessor()[1]
+            s = self.bestMoveAndSuccessor()[1]
+            if s == None:
+                pass
+            return s
         
         def computeBestLeaf(self):
             if self.successors:
@@ -130,7 +140,7 @@ class Minimax(object):
         def collectLeafValues(self):
             yield self.board, self.leafValue()
             if self.successors:
-                for s in self.successors:
+                for m,s in self.successors:
                     for b,v in s.collectLeafValues():
                         yield b,v
 
