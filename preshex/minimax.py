@@ -126,6 +126,13 @@ class Minimax(object):
                 return [(m, s)] + s.bestChain()
             else:
                 return []
+            
+        def collectLeafValues(self):
+            yield self.board, self.leafValue()
+            if self.successors:
+                for s in self.successors:
+                    for b,v in s.collectLeafValues():
+                        yield b,v
 
         def trace(self, indent = 0, rank = 0, file = sys.stdout):
             self.board.trace(indent, file = file)
@@ -235,9 +242,13 @@ class Minimax(object):
     def leafDistance(self):
         if self.root:
             return self.root.leafDistance()
+        
+    def collectLeafValues(self):
+        if self.root:
+            for b,v in self.root.collectLeafValues():
+                yield b,v
 
     def trace(self, file = sys.stdout):
         if self.root:
             return self.root.trace(file = file)
-    
-    
+        

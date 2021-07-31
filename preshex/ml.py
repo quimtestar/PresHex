@@ -128,9 +128,22 @@ class Predictor(object):
         return prediction[0,0]
     
     
+def minimaxTrain(boardSize):
+    model = load_model("model.h5")
+    model.summary()
+    minimax = Minimax(Board(boardSize),heuristic = Predictor(board.size).predict)
+    minimax.expand(10000,1000)
+    for board,value in minimax.collectLeafValues():
+        board.trace()
+        print(value)
+        print("-------")
+        print()
+    
+    
 if __name__ == '__main__':
-    heuristicTrain(7)
+    #heuristicTrain(7)
     #heuristicTest(7)
+    minimaxTrain(7)
 
     
     
