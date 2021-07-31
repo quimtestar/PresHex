@@ -129,8 +129,6 @@ class Predictor(object):
     
     
 def minimaxTrain(boardSize):
-    model = load_model("model.h5")
-    model.summary()
     minimax = Minimax(Board(boardSize),heuristic = Predictor(boardSize).predict)
     minimax.expand(1000000,1000)
     cells = []
@@ -141,14 +139,16 @@ def minimaxTrain(boardSize):
     del minimax
     input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
     output = np.zeros((len(values),) + (1,))
-    del cells, values
     input[:,0,:,1] = 1
     input[:,-1,:,1] = 1
     input[:,:,0,-1] = -1
     input[:,:,-1,-1] = -1
     input[:,:,:,0] = cells
     output[:,0] = values
+    del cells, values
     x,y = input, output
+    model = load_model("model.h5")
+    model.summary()
     while True:
         history = model.fit(
                 x,
