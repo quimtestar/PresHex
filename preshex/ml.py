@@ -5,7 +5,7 @@ from keras.models import Sequential, load_model
 from keras.layers import Conv2D, Dense, Flatten, Reshape
 from keras.callbacks import Callback, ModelCheckpoint, EarlyStopping
 from minimax import Minimax
-from board import Board
+from board import Board, Move
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -129,9 +129,14 @@ class Predictor(object):
     
     
 def minimaxTrain(boardSize):
-    model = load_model("model.h5")
-    model.summary()
-    minimax = Minimax(Board(boardSize),heuristic = Predictor(boardSize).predict)
+    board = Board(boardSize)
+    for k in range(boardSize-1):
+        board.move(Move(0,k))
+        board.move(Move(k,boardSize-1))
+        board.move(Move(boardSize-1,boardSize-1-k))
+        board.move(Move(boardSize-1-k,0))
+    board.trace()
+    minimax = Minimax(board,heuristic = Predictor(boardSize).predict)
     minimax.expand(1000000,1000)
     cells = []
     values = []
@@ -149,6 +154,8 @@ def minimaxTrain(boardSize):
     input[:,:,:,0] = cells
     output[:,0] = values
     x,y = input, output
+    model = load_model("model.h5")
+    model.summary()
     while True:
         history = model.fit(
                 x,
