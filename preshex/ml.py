@@ -104,9 +104,29 @@ def test(boardSize):
     ev = model.evaluate(x,y, verbose = 2)
     print(ev)     
             
+
+class Predictor(object):
     
-    
-    
+    def __init__(self,size):
+        self.model = None
+        self.input = np.zeros((1,) + (size,)*2 + (3,))
+        self.input[:,0,:,1] = 1
+        self.input[:,-1,:,1] = 1
+        self.input[:,:,0,-1] = -1
+        self.input[:,:,-1,-1] = -1
+        
+    def predict(self,board):
+        if self.model is None:
+            import tensorflow as tf
+            from keras.backend.tensorflow_backend import set_session
+            config = tf.ConfigProto()
+            config.gpu_options.allow_growth = True
+            set_session(tf.Session(config=config))
+            tf.get_logger().setLevel('INFO')            
+            self.model = load_model("model.h5")
+        self.input[:,:,:,0] = board.cells
+        prediction = self.model.predict(self.input)
+        return prediction[0,0]
     
     
 if __name__ == '__main__':

@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
                 )
 import sys
 import math
+from ml import Predictor
 
 def gui():
     app = PresHexApplication()
@@ -15,9 +16,9 @@ def gui():
     app.exec_()
 
 def minimax():
-    board = Board(size = 4)
-    minimax = Minimax(board,Board.pendingDistanceHeuristic)
-    minimax.expand(2**22,2**10)
+    board = Board(size = 7)
+    minimax = Minimax(board,Predictor(board.size).predict)
+    minimax.expand(250000,1000)
 
 if __name__ == '__main__':
     gui()
