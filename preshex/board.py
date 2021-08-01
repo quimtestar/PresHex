@@ -77,6 +77,7 @@ class Board(object):
     
     def __init__(self,size):
         self.size = size
+        self.moves = 0
         self.turn = 1
         self.cells = np.zeros((size,)*2,dtype=np.byte)
         self.floodPos = np.zeros((size,)*2,dtype=bool) 
@@ -87,6 +88,7 @@ class Board(object):
 
     def copy(self):
         board = Board(self.size)
+        board.moves = self.moves
         board.turn = self.turn
         board.cells[:] = self.cells
         board.floodPos[:] = self.floodPos
@@ -95,12 +97,14 @@ class Board(object):
         return board
 
     def __hash__(self):
-        return hash((self.size,self.turn,self.cells.tobytes()))
+        return hash((self.size,self.moves,self.turn,self.cells.tobytes()))
     
     def __eq__(self,other):
-        return isinstance(other, Board) and (self.size, self.turn) == (other.size, other.turn) and np.array_equal(self.cells,other.cells)
-
- 
+        return (isinstance(other, Board) 
+                and (self.size, self.moves, self.turn) == (other.size, self.moves, other.turn) 
+                and np.array_equal(self.cells,other.cells)
+                )
+        
     def inBoard(self,move):
         return 0 <= move.i < self.size and 0 <= move.j < self.size
         
@@ -142,6 +146,7 @@ class Board(object):
             updateFlood(self.floodNeg,lambda m:m.initial(-1))
             if self.connectedNeg():
                 self.winner = self.turn
+        self.moves += 1
         self.turn *= -1
         self._pendingDistancePos = None
         self._pendingDistanceNeg = None
@@ -158,6 +163,7 @@ class Board(object):
         if not self.validUnmove(move):
             raise self.InvalidMove(move)
         self.cells[move.i,move.j] = 0
+        self.moves -= 1
         self.turn *= -1
         def updateFlood(flood,initial):
             stack = list(initial)

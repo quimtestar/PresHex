@@ -130,14 +130,9 @@ class Predictor(object):
     
 def minimaxTrain(boardSize):
     board = Board(boardSize)
-    for k in range(boardSize-1):
-        board.move(Move(0,k))
-        board.move(Move(k,boardSize-1))
-        board.move(Move(boardSize-1,boardSize-1-k))
-        board.move(Move(boardSize-1-k,0))
     board.trace()
     minimax = Minimax(board,heuristic = Predictor(boardSize).predict)
-    minimax.expand(1000000,1000)
+    minimax.expand(1000000,1000,uniformDepth = True)
     cells = []
     values = []
     for board,value in minimax.collectLeafValues():

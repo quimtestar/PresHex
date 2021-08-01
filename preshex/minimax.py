@@ -19,6 +19,7 @@ class Minimax(object):
             self._ownValue = None
             self._bestLeaf = None
             self._bestMovesAndSuccessors = None
+            self._sortedSuccessors = None
         
         def computeOwnValue(self):
             if self.board.winner:
@@ -103,7 +104,7 @@ class Minimax(object):
             for m,s in self.successors:
                 s.parentBoards.add(self.board)
 
-        def expandLeaf(self):
+        def expandLeafClassic(self):
             if self.successors is None:
                 self.makeSuccessors()
                 self.clearParents()
@@ -111,8 +112,35 @@ class Minimax(object):
             elif self.successors:
                 return self.bestSuccessor().expandLeaf()
 
+        def expandLeaf(self, uniformDepth = False):
+            if uniformDepth:
+                return self.expandLeafUniformDepth()
+            else:
+                return self.expandLeafClassic()
+        
+        def computeSortedSuccessors(self):
+            return sorted([s for m,s in self.successors], key = self.successorSortKey, reverse = True)
+
+        def sortedSuccessors(self):
+            if self._sortedSuccessors is None:
+                self._sortedSuccessors = self.computeSortedSuccessors()
+            return self._sortedSuccessors
+
+        def expandLeafUniformDepth(self):
+            if self.successors is None:
+                if self.minimax.numBoardsByMoves(self.board.moves + 1) * self.minimax.moveDepth() < self.minimax.size():
+                    self.makeSuccessors()
+                    self.clearParents()
+                    return self
+            elif self.successors:
+                for s in self.sortedSuccessors():
+                    l = s.expandLeafUniformDepth()
+                    if l:
+                        return l
+
         def reset(self):
             self._bestMovesAndSuccessors = None
+            self._sortedSuccessors = None
             if self._bestLeaf:
                 for m,s in self.bestMovesAndSuccessors():
                     if self._bestLeaf[0] == s.bestLeaf()[0]:
@@ -147,6 +175,7 @@ class Minimax(object):
     
     def __init__(self,board = None, heuristic = lambda board:0):
         self.nodes = {}
+        self.boardsByMoves = []
         self.heuristic = heuristic
         self.pruneDeque = deque()
         self.root = None
@@ -163,11 +192,18 @@ class Minimax(object):
         n = self.nodes.get(board)
         if n is None:
             n = self.nodes[board] = self.Node(self,board)
+            if board.moves >= len(self.boardsByMoves):
+                self.boardsByMoves.extend(set() for i in range(board.moves + 1 - len(self.boardsByMoves)))
+            self.boardsByMoves[board.moves].add(board)
         return n
         
-    def expandLeaf(self):
+    def expandLeaf(self, uniformDepth = False):
         if self.root:
-            return self.root.expandLeaf()
+            n = self.root.expandLeaf(uniformDepth)
+            if n is None and uniformDepth:
+                return self.root.expandLeaf() 
+            else:
+                return n
 
     def bestChain(self):
         if self.root:
@@ -182,7 +218,7 @@ class Minimax(object):
     def statusText(self):
         return f"({self.size()}) {self.bestChainStr()}"
 
-    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1):
+    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepth = False):
         fully = False
         t0 = time.time()
         while self.size() >= size:
@@ -200,7 +236,7 @@ class Minimax(object):
                 if time.time() - t0 >= statusInterval:
                     status(self.statusText())
                     t0 = time.time()
-                if not self.expandLeaf():
+                if not self.expandLeaf(uniformDepth):
                     fully = True
                     break
             else:
@@ -220,6 +256,9 @@ class Minimax(object):
                 node_ = self.nodes.pop(node.board, None)
                 if node_:
                     pruned += 1
+                    self.boardsByMoves[node_.board.moves].discard(node_.board)
+                    while self.boardsByMoves and not self.boardsByMoves[-1]:
+                        self.boardsByMoves.pop()
                     if node_.successors:
                         for m,s in node_.successors:
                             s.parentBoards.remove(node_.board)
@@ -228,6 +267,7 @@ class Minimax(object):
     
     def purge(self):
         self.nodes = {}
+        self.boardsByMoves = []
         self.pruneDeque = deque()
         self.root = None
 
@@ -248,6 +288,12 @@ class Minimax(object):
         
     def collectLeafValues(self):
         return map(lambda w: (w[0],w[1].leafValue()), self.nodes.items())
+
+    def moveDepth(self):
+        return len(self.boardsByMoves)
+    
+    def numBoardsByMoves(self,moves):
+        return len(self.boardsByMoves[moves]) if moves < self.moveDepth() else 0
 
     def trace(self, file = sys.stdout):
         if self.root:
