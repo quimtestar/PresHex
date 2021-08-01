@@ -104,6 +104,12 @@ class Minimax(object):
             for m,s in self.successors:
                 s.parentBoards.add(self.board)
 
+        def expandLeaf(self, uniformDepthFactor = None):
+            if uniformDepthFactor:
+                return self.expandLeafUniformDepth(factor = uniformDepthFactor)
+            else:
+                return self.expandLeafClassic()
+
         def expandLeafClassic(self):
             if self.successors is None:
                 self.makeSuccessors()
@@ -112,12 +118,6 @@ class Minimax(object):
             elif self.successors:
                 return self.bestSuccessor().expandLeaf()
 
-        def expandLeaf(self, uniformDepth = False):
-            if uniformDepth:
-                return self.expandLeafUniformDepth()
-            else:
-                return self.expandLeafClassic()
-        
         def computeSortedSuccessors(self):
             return sorted([s for m,s in self.successors], key = self.successorSortKey, reverse = True)
 
@@ -126,15 +126,15 @@ class Minimax(object):
                 self._sortedSuccessors = self.computeSortedSuccessors()
             return self._sortedSuccessors
 
-        def expandLeafUniformDepth(self):
+        def expandLeafUniformDepth(self, factor):
             if self.successors is None:
-                if self.minimax.numBoardsByMoves(self.board.moves + 1) * self.minimax.moveDepth() < self.minimax.size():
+                if self.minimax.numBoardsByMoves(self.board.moves + 1) < factor * self.minimax.size() / self.minimax.moveDepth():
                     self.makeSuccessors()
                     self.clearParents()
                     return self
             elif self.successors:
                 for s in self.sortedSuccessors():
-                    l = s.expandLeafUniformDepth()
+                    l = s.expandLeafUniformDepth(factor)
                     if l:
                         return l
 
@@ -197,10 +197,10 @@ class Minimax(object):
             self.boardsByMoves[board.moves].add(board)
         return n
         
-    def expandLeaf(self, uniformDepth = False):
+    def expandLeaf(self, uniformDepthFactor = None):
         if self.root:
-            n = self.root.expandLeaf(uniformDepth)
-            if n is None and uniformDepth:
+            n = self.root.expandLeaf(uniformDepthFactor)
+            if n is None and uniformDepthFactor:
                 return self.root.expandLeaf() 
             else:
                 return n
@@ -218,7 +218,7 @@ class Minimax(object):
     def statusText(self):
         return f"({self.size()}) {self.bestChainStr()}"
 
-    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepth = False):
+    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepthFactor = None):
         fully = False
         t0 = time.time()
         while self.size() >= size:
@@ -236,7 +236,7 @@ class Minimax(object):
                 if time.time() - t0 >= statusInterval:
                     status(self.statusText())
                     t0 = time.time()
-                if not self.expandLeaf(uniformDepth):
+                if not self.expandLeaf(uniformDepthFactor):
                     fully = True
                     break
             else:
