@@ -5,6 +5,7 @@ import random
 import math
 import time
 import numpy as np
+import utils
 
 class Minimax(object):
 
@@ -104,9 +105,9 @@ class Minimax(object):
             for m,s in self.successors:
                 s.parentBoards.add(self.board)
 
-        def expandLeaf(self, uniformDepthFactor = None):
+        def expandLeaf(self, uniformDepthFactor = None, uniformDepthRandomization = 0):
             if uniformDepthFactor:
-                return self.expandLeafUniformDepth(factor = uniformDepthFactor)
+                return self.expandLeafUniformDepth(factor = uniformDepthFactor, randomization = uniformDepthRandomization)
             else:
                 return self.expandLeafClassic()
 
@@ -126,15 +127,17 @@ class Minimax(object):
                 self._sortedSuccessors = self.computeSortedSuccessors()
             return self._sortedSuccessors
 
-        def expandLeafUniformDepth(self, factor):
+
+        def expandLeafUniformDepth(self, factor, randomization = 0):
             if self.successors is None:
                 if self.minimax.numBoardsByMoves(self.board.moves + 1) < factor * self.minimax.size() / self.minimax.moveDepth():
                     self.makeSuccessors()
                     self.clearParents()
                     return self
             elif self.successors:
-                for s in self.sortedSuccessors():
-                    l = s.expandLeafUniformDepth(factor)
+                ss = self.sortedSuccessors()
+                for i in utils.randomPermutation(len(ss),a = randomization):
+                    l = ss[i].expandLeafUniformDepth(factor, randomization)
                     if l:
                         return l
 
@@ -197,9 +200,9 @@ class Minimax(object):
             self.boardsByMoves[board.moves].add(board)
         return n
         
-    def expandLeaf(self, uniformDepthFactor = None):
+    def expandLeaf(self, uniformDepthFactor = None, uniformDepthRandomization = 0):
         if self.root:
-            n = self.root.expandLeaf(uniformDepthFactor)
+            n = self.root.expandLeaf(uniformDepthFactor, uniformDepthRandomization)
             if n is None and uniformDepthFactor:
                 return self.root.expandLeaf() 
             else:
@@ -218,7 +221,7 @@ class Minimax(object):
     def statusText(self):
         return f"({self.size()}) {self.bestChainStr()}"
 
-    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepthFactor = None):
+    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepthFactor = None, uniformDepthRandomization = 0):
         fully = False
         t0 = time.time()
         while self.size() >= size:
@@ -236,7 +239,7 @@ class Minimax(object):
                 if time.time() - t0 >= statusInterval:
                     status(self.statusText())
                     t0 = time.time()
-                if not self.expandLeaf(uniformDepthFactor):
+                if not self.expandLeaf(uniformDepthFactor,uniformDepthRandomization):
                     fully = True
                     break
             else:

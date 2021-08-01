@@ -132,7 +132,7 @@ def minimaxTrain(boardSize):
     board = Board(boardSize)
     board.trace()
     minimax = Minimax(board,heuristic = Predictor(boardSize).predict)
-    minimax.expand(1000000,1000,uniformDepthFactor = 2)
+    minimax.expand(1000000,1000,uniformDepthFactor = 2, uniformDepthRandomization = 0.1)
     cells = []
     values = []
     for board,value in minimax.collectLeafValues():
