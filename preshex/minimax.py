@@ -51,7 +51,7 @@ class Minimax(object):
                         if k > pivot:
                             items_.append(w)
                 items = items_
-            if self.successors and not best:
+            if self.successors and not best:    #XXX debugging
                 print(f"successors: {self.successors}, best:{best}")  
             return best
         
@@ -71,7 +71,7 @@ class Minimax(object):
         
         def bestSuccessor(self):
             s = self.bestMoveAndSuccessor()[1]
-            if s == None:
+            if s == None:   #XXX debugging
                 pass
             return s
         
