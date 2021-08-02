@@ -110,16 +110,18 @@ def heuristicTest(boardSize):
 
 class Predictor(object):
     
-    def __init__(self,modelFile,size):
+    def __init__(self,modelFile,boardSize,batchSize = multiprocessing.cpu_count()):
         self.modelFile = modelFile
-        self.input = np.zeros((1,) + (size,)*2 + (3,))
+        self.input = np.zeros((batchSize,) + (boardSize,)*2 + (3,))
         self.input[:,0,:,1] = 1
         self.input[:,-1,:,1] = 1
         self.input[:,:,0,-1] = -1
         self.input[:,:,-1,-1] = -1
+        self.n = 0
+        self.pending = np.zeros(batchSize, dtype = bool)
+        self.ready = np.zeros(batchSize, dtype = bool)
         self.thread = Thread(target = self.run, name = "Predictor", daemon = True)
         self.condition = Condition()
-        self.board = None
         self.stop = False
         self.thread.start()
         
@@ -139,25 +141,28 @@ class Predictor(object):
             tf.get_logger().setLevel('INFO')            
             model = load_model(self.modelFile)
             while True:
-                while not self.stop and self.board is None:
+                while not self.stop and (self.n <= 0 or self.ready.any()):
                     self.condition.wait()
                 if self.stop:
                     break
-                self.input[:,:,:,0] = self.board.cells
-                self.prediction = model.predict(self.input)[0,0]
-                self.board = None
+                self.prediction = model.predict(self.input[:self.n])
+                self.ready[:self.n] = True
+                self.n = 0
                 self.condition.notifyAll()
         
     def predict(self,board):
         with self.condition:
-            while self.board is not None:
+            while self.n >= len(self.input) or self.ready[self.n]:
                 self.condition.wait()
-            self.board = board
-            self.prediction = None
+            i = self.n
+            self.input[i,:,:,0] = board.cells
+            self.n += 1
             self.condition.notifyAll()
-            while self.prediction is None:
+            while not self.ready[i]:
                 self.condition.wait()
-            return self.prediction
+            self.ready[i] = False
+            self.condition.notifyAll()
+            return self.prediction[i,0]
     
     def __enter__(self):
         return self
