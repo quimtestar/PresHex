@@ -78,11 +78,11 @@ def generateModel(boardSize):
         
 
 def heuristicTrain(boardSize):
-    #model = generateModel(boardSize)
-    model = load_model("model.h5")
+    model = generateModel(boardSize)
+    #model = load_model("model.h5")
     model.summary()
 
-    x, y = makeHeuristicData(boardSize, 2**20)
+    x, y = makeHeuristicData(boardSize, 2**18)
 
     while True:
         history = model.fit(
@@ -129,16 +129,15 @@ class Predictor(object):
     
     
 def minimaxTrain(boardSize):
-    board = Board(boardSize)
-    board.trace()
-    minimax = Minimax(board,heuristic = Predictor(boardSize).predict)
-    minimax.expand(1000000,1000,uniformDepthFactor = 2, uniformDepthRandomization = 0.1)
     cells = []
     values = []
-    for board,value in minimax.collectLeafValues():
-        cells.append(board.cells)
-        values.append(value)
-    del minimax
+    for i in range(10):
+        minimax = Minimax(Board(boardSize), heuristic = Predictor(boardSize).predict)
+        minimax.expand(100000,1000,uniformDepthFactor = 1,uniformDepthRandomization = 0.1)
+        for board,value in minimax.collectLeafValues():
+            cells.append(board.cells)
+            values.append(value)
+        del minimax
     input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
     output = np.zeros((len(values),) + (1,))
     input[:,0,:,1] = 1
