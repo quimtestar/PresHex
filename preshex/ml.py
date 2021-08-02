@@ -6,6 +6,7 @@ from keras.layers import Conv2D, Dense, Flatten, Reshape
 from keras.callbacks import Callback, ModelCheckpoint, EarlyStopping
 from minimax import Minimax
 from board import Board, Move
+import bisect
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -162,15 +163,66 @@ def minimaxTrain(boardSize):
         
         model.save("model.h5")
     
+def minimaxTrainAlt(boardSize):
+    predictor = Predictor(boardSize)
+    minimax = Minimax(heuristic = predictor.predict)
+    cells = []
+    values = []
+    while len(cells) < 1000000:
+        print(f"--- > len(cells):{len(cells)}")
+        board = Board(boardSize)
+        game = []
+        while board:
+            game.append(board)
+            boards = []
+            accumulatedPredict = []
+            s = 0
+            for move in board.possibleMoves():
+                boards.append(board.moveOnCopy(move))
+                s += 1 + predictor.predict(board) * board.turn
+                accumulatedPredict.append(s)
+            if boards:
+                board = boards[bisect.bisect(accumulatedPredict,s*random.random())]
+            else:
+                board = None
+        for board in game[::-1]:
+            minimax.setRootBoard(board)
+            fully = minimax.expand(25000,1000)
+            if not fully:
+                break
+        for board,value in minimax.collectLeafValues():
+            cells.append(board.cells)
+            values.append(value)
+    del minimax
+    input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
+    output = np.zeros((len(values),) + (1,))
+    input[:,0,:,1] = 1
+    input[:,-1,:,1] = 1
+    input[:,:,0,-1] = -1
+    input[:,:,-1,-1] = -1
+    input[:,:,:,0] = cells
+    output[:,0] = values
+    del cells, values
+    x,y = input, output
+    model = load_model("model.h5")
+    model.summary()
+    while True:
+        history = model.fit(
+                x,
+                y,
+                batch_size = 64,
+                shuffle = True,
+                epochs = 1,
+                verbose = 2,
+                validation_split = 0.0625)
         
+        model.save("model.h5")
         
-        
-    
     
 if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
-    minimaxTrain(7)
+    minimaxTrainAlt(7)
 
     
     
