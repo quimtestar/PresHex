@@ -267,7 +267,7 @@ def minimaxTrain(boardSize):
     output[:,0] = values
     del cells, values
     x,y = input, output
-    
+    np.savez("data.npz",x=x,y=y)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     set_session(tf.Session(config=config))
