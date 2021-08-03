@@ -224,7 +224,7 @@ def terminalSmallMinimax(boardSize,predictor):
     minimax = Minimax(heuristic = predictor.predict)
     for board in game[::-1]:
         minimax.setRootBoard(board)
-        fully = minimax.expand(25000,1000,statusInterval = 60 * multiprocessing.cpu_count())
+        fully = minimax.expand(5000,1000,statusInterval = 60 * multiprocessing.cpu_count())
         if not fully:
             break
     return minimax
@@ -271,6 +271,7 @@ def minimaxTrain(boardSize):
     set_session(tf.Session(config=config))
     model = load_model("model.h5")
     model.summary()
+    lastValLoss = np.inf
     while True:
         history = model.fit(
                 x,
@@ -281,13 +282,50 @@ def minimaxTrain(boardSize):
                 verbose = 2,
                 validation_split = 0.0625)
         
-        model.save("model.h5")
+        valLoss = history.history['val_loss'][-1]
+        if valLoss < lastValLoss:
+            model.save("model.h5")
+            lastValLoss = valLoss
+    
+def modelDesign():
+    data = np.load("data.npz")
+    x = data["x"]
+    y = data["y"]
+    boardSize = x.shape[1]
+    """
+    model = Sequential()
+    model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
+    model.add(Conv2D(filters = 8, kernel_size = (3,3), padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 8, kernel_size = (3,3), padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 8, kernel_size = (3,3), padding = "same", activation = "tanh"))
+    model.add(Flatten())
+    model.add(Dense(units = 16, activation = "tanh"))
+    model.add(Dense(units = 1, activation = "tanh"))
+    model.compile(loss = "mean_absolute_error", optimizer = "SGD")
+    """
+    model = load_model("model.h5")
+    model.summary()
+    lastValLoss = np.inf
+    while True:
+        history = model.fit(
+                x,
+                y,
+                batch_size = 64,
+                shuffle = True,
+                epochs = 1,
+                verbose = 2,
+                validation_split = 0.0625)
+        valLoss = history.history['val_loss'][-1]
+        if valLoss < lastValLoss:
+            model.save("model.h5")
+            lastValLoss = valLoss
         
     
 if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
-    minimaxTrain(7)
+    #minimaxTrain(7)
+    modelDesign()
 
     
     
