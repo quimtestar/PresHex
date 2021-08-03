@@ -222,11 +222,13 @@ def terminalSmallMinimax(boardSize,predictor):
         else:
             board = None
     minimax = Minimax(heuristic = predictor.predict)
+    size = 0
     for board in game[::-1]:
         minimax.setRootBoard(board)
-        fully = minimax.expand(5000,1000,statusInterval = 60 * multiprocessing.cpu_count())
+        fully = minimax.expand(size,1000,statusInterval = 60 * multiprocessing.cpu_count())
         if not fully:
             break
+        size += 2000
     return minimax
     
 def minimaxTrain(boardSize):
@@ -324,8 +326,8 @@ def modelDesign():
 if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
-    #minimaxTrain(7)
-    modelDesign()
+    minimaxTrain(7)
+    #modelDesign()
 
     
     
