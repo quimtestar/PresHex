@@ -10,6 +10,7 @@ import bisect
 from collections import deque
 import sys
 from threading import Thread, Condition, RLock, Lock
+import hashlib
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -169,42 +170,7 @@ class Predictor(object):
     
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()    
-    
-def minimaxTrainOld(boardSize):
-    cells = []
-    values = []
-    for i in range(10):
-        minimax = Minimax(Board(boardSize), heuristic = Predictor("model.h5",boardSize).predict)
-        minimax.expand(100000,1000,uniformDepthFactor = 1,uniformDepthRandomization = 0.1)
-        for board,value in minimax.collectLeafValues():
-            cells.append(board.cells)
-            values.append(value)
-        del minimax
-    input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
-    output = np.zeros((len(values),) + (1,))
-    input[:,0,:,1] = 1
-    input[:,-1,:,1] = 1
-    input[:,:,0,-1] = -1
-    input[:,:,-1,-1] = -1
-    input[:,:,:,0] = cells
-    output[:,0] = values
-    del cells, values
-    x,y = input, output
-    model = load_model("model.h5")
-    model.summary()
-    while True:
-        history = model.fit(
-                x,
-                y,
-                batch_size = 64,
-                shuffle = True,
-                epochs = 1,
-                verbose = 2,
-                validation_split = 0.0625)
         
-        model.save("model.h5")
-    
-    
 def terminalSmallMinimax(boardSize,predictor):
     board = Board(boardSize)
     game = []
@@ -230,8 +196,15 @@ def terminalSmallMinimax(boardSize,predictor):
             break
         size += 2000
     return minimax
+
+def hashCells(cells):
+    hash = hashlib.md5()
+    hash.update(cells.tobytes())
+    digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
+    return int.from_bytes(digest, byteorder = "big", signed = True)
     
-def minimaxTrain(boardSize):
+
+def generateMinimaxTrainData(boardSize):
     with Predictor("model.h5",boardSize) as predictor:
         lock = RLock()
         cells = []
@@ -257,6 +230,11 @@ def minimaxTrain(boardSize):
             threads.append(thread)
         for thread in threads:
             thread.join()
+        return cells, values
+    
+def formatMinimaxTrainData(cells,values):
+    validation = np.fromiter(map(hashCells,cells),dtype=int)/(sys.maxsize+1) < 0.0625*2-1
+    train = np.logical_not(validation)
     input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
     output = np.zeros((len(values),) + (1,))
     input[:,0,:,1] = 1
@@ -265,9 +243,15 @@ def minimaxTrain(boardSize):
     input[:,:,-1,-1] = -1
     input[:,:,:,0] = cells
     output[:,0] = values
+    x,y = input[train], output[train]
+    x_val, y_val = input[validation], output[validation]
+    return x,y,x_val,y_val
+    
+def minimaxTrain(boardSize):
+    cells, values = generateMinimaxTrainData(boardSize)
+    np.savez("data.npz",cells = cells,values = values)
+    x, y, x_val, y_val = formatMinimaxTrainData(cells,values)
     del cells, values
-    x,y = input, output
-    np.savez("data.npz",x=x,y=y)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     set_session(tf.Session(config=config))
@@ -282,8 +266,7 @@ def minimaxTrain(boardSize):
                 shuffle = True,
                 epochs = 1,
                 verbose = 2,
-                validation_split = 0.0625)
-        
+                validation_data = (x_val, y_val))        
         valLoss = history.history['val_loss'][-1]
         if valLoss < lastValLoss:
             model.save("model.h5")
@@ -291,22 +274,24 @@ def minimaxTrain(boardSize):
     
 def modelDesign():
     data = np.load("data.npz")
-    x = data["x"]
-    y = data["y"]
-    boardSize = x.shape[1]
-    """
+    cells = data["cells"]
+    values = data["values"]
+    boardSize = cells.shape[1]
+    x, y, x_val, y_val = formatMinimaxTrainData(cells,values)
+    del cells, values
     model = Sequential()
     model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
-    model.add(Conv2D(filters = 8, kernel_size = (3,3), padding = "same", activation = "tanh"))
-    model.add(Conv2D(filters = 8, kernel_size = (3,3), padding = "same", activation = "tanh"))
-    model.add(Conv2D(filters = 8, kernel_size = (3,3), padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 1,kernel_size = (3,3),activation = "tanh"))
+    model.add(Conv2D(filters = 1,kernel_size = (3,3),activation = "tanh"))
+    model.add(Conv2D(filters = 1,kernel_size = (3,3),activation = "tanh"))
     model.add(Flatten())
     model.add(Dense(units = 16, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
     model.compile(loss = "mean_absolute_error", optimizer = "SGD")
-    """
-    model = load_model("model.h5")
+    #model = load_model("model_new.h5")
     model.summary()
+    #r = model.evaluate(x,y)
+    #print(r)
     lastValLoss = np.inf
     while True:
         history = model.fit(
@@ -316,7 +301,7 @@ def modelDesign():
                 shuffle = True,
                 epochs = 1,
                 verbose = 2,
-                validation_split = 0.0625)
+                validation_data = (x_val, y_val))        
         valLoss = history.history['val_loss'][-1]
         if valLoss < lastValLoss:
             model.save("model.h5")
