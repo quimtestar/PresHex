@@ -11,6 +11,7 @@ from collections import deque
 import sys
 from threading import Thread, Condition, RLock, Lock
 import hashlib
+import time
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -171,7 +172,7 @@ class Predictor(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()    
         
-def terminalSmallMinimax(boardSize,predictor):
+def terminalSmallMinimax(boardSize,predictor = None, deltaSize = 2000):
     board = Board(boardSize)
     game = []
     while board:
@@ -181,20 +182,24 @@ def terminalSmallMinimax(boardSize,predictor):
         s = 0
         for move in board.possibleMoves():
             boards.append(board.moveOnCopy(move))
-            s += 1 + predictor.predict(board) * board.turn
+            if predictor:
+                s += 1 + predictor.predict(board) * board.turn
             accumulatedPredict.append(s)
         if boards:
-            board = boards[bisect.bisect(accumulatedPredict,s*random.random())]
+            if s > 0:
+                board = boards[bisect.bisect(accumulatedPredict,s*random.random())]
+            else:
+                board = random.choice(boards)
         else:
             board = None
-    minimax = Minimax(heuristic = predictor.predict)
+    minimax = Minimax(heuristic = predictor.predict) if predictor else Minimax()
     size = 0
     for board in game[::-1]:
         minimax.setRootBoard(board)
         fully = minimax.expand(size,1000,statusInterval = 60 * multiprocessing.cpu_count())
         if not fully:
             break
-        size += 2000
+        size += deltaSize
     return minimax
 
 def hashCells(cells):
@@ -203,40 +208,52 @@ def hashCells(cells):
     digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
     return int.from_bytes(digest, byteorder = "big", signed = True)
     
+def generateMinimaxTrainDataPredictor(boardSize,predictor = None, size = 4000000, deltaSize = 2000):
+    lock = RLock()
+    cells = []
+    values = []
+    class TerminalSmallMinimaxThread(Thread):
+        def __init__(self):
+            super().__init__(name = "terminalSmallMinimax")
+        
+        def run(self):
+            while True:
+                minimax = terminalSmallMinimax(boardSize,predictor,deltaSize)
+                with lock:
+                    for board,value in minimax.collectLeafValues():
+                        cells.append(board.cells)
+                        values.append(value)
+                    print(f"----> data size:{len(cells)}",file = sys.stderr)
+                    if len(cells) >= size:
+                        break
+    threads = []
+    for i in range(multiprocessing.cpu_count()):
+        thread = TerminalSmallMinimaxThread()
+        thread.start()
+        threads.append(thread)
+    for thread in threads:
+        thread.join()
+    return np.array(cells), np.array(values)
 
-def generateMinimaxTrainData(boardSize):
-    with Predictor("model.h5",boardSize) as predictor:
-        lock = RLock()
-        cells = []
-        values = []
-        class TerminalSmallMinimaxThread(Thread):
-            def __init__(self):
-                super().__init__(name = "terminalSmallMinimax")
-            
-            def run(self):
-                while True:
-                    minimax = terminalSmallMinimax(boardSize,predictor)
-                    with lock:
-                        for board,value in minimax.collectLeafValues():
-                            cells.append(board.cells)
-                            values.append(value)
-                        print(f"----> data size:{len(cells)}",file = sys.stderr)
-                        if len(cells) >= 1000000:
-                            break
-        threads = []
-        for i in range(multiprocessing.cpu_count()):
-            thread = TerminalSmallMinimaxThread()
-            thread.start()
-            threads.append(thread)
-        for thread in threads:
-            thread.join()
-        return cells, values
+
+def generateMinimaxTrainData(boardSize,modelFile = None, size = 4000000, deltaSize = 2000):
+    if modelFile:
+        with Predictor(modelFile,boardSize) as predictor:
+            return generateMinimaxTrainDataPredictor(boardSize,predictor,size,deltaSize)
+    else:
+        return generateMinimaxTrainDataPredictor(boardSize,size = size, deltaSize = deltaSize)
+
+def saveMinimaxTrainData(boardSize,dataFile,modelFile = None,size = 4000000, deltaSize = 2000):
+    cells, values = generateMinimaxTrainData(boardSize,modelFile,size,deltaSize)
+    np.savez(dataFile,cells = cells,values = values)
+
     
-def formatMinimaxTrainData(cells,values):
-    validation = np.fromiter(map(hashCells,cells),dtype=int)/(sys.maxsize+1) < 0.0625*2-1
+def formatMinimaxTrainData(cells,values,validation = 1/16):
+    hashes = np.apply_along_axis(lambda w:hashCells(w.reshape(cells.shape[1:])),1,cells.reshape((cells.shape[0],np.product(cells.shape[1:]))))
+    validation = hashes/(sys.maxsize+1) < validation * 2 - 1
     train = np.logical_not(validation)
-    input = np.zeros((len(cells),) + (boardSize,)*2 + (3,))
-    output = np.zeros((len(values),) + (1,))
+    input = np.zeros(cells.shape + (3,))
+    output = np.zeros(values.shape + (1,))
     input[:,0,:,1] = 1
     input[:,-1,:,1] = 1
     input[:,:,0,-1] = -1
@@ -246,73 +263,135 @@ def formatMinimaxTrainData(cells,values):
     x,y = input[train], output[train]
     x_val, y_val = input[validation], output[validation]
     return x,y,x_val,y_val
-    
-def minimaxTrain(boardSize):
-    cells, values = generateMinimaxTrainData(boardSize)
-    np.savez("data.npz",cells = cells,values = values)
-    x, y, x_val, y_val = formatMinimaxTrainData(cells,values)
-    del cells, values
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    set_session(tf.Session(config=config))
-    model = load_model("model.h5")
-    model.summary()
-    lastValLoss = np.inf
-    while True:
-        history = model.fit(
-                x,
-                y,
-                batch_size = 64,
-                shuffle = True,
-                epochs = 1,
-                verbose = 2,
-                validation_data = (x_val, y_val))        
-        valLoss = history.history['val_loss'][-1]
-        if valLoss < lastValLoss:
-            model.save("model.h5")
-            lastValLoss = valLoss
-    
-def modelDesign():
-    data = np.load("data.npz")
+ 
+def dataMinError(dataFile):
+    data = np.load(dataFile)
     cells = data["cells"]
     values = data["values"]
-    boardSize = cells.shape[1]
-    x, y, x_val, y_val = formatMinimaxTrainData(cells,values)
+    means = np.zeros(len(cells))
+    ucells, icells = np.unique(cells,axis=0, return_inverse = True)
+    for j in range(len(ucells)):
+        i = icells == j
+        means[i] = np.mean(values[i])
+    return np.mean(np.abs(values-means))
+    
+        
+def minimaxTrain(dataFile,modelFile,fraction = 1, validation = 1/16):
+    data = np.load(dataFile)
+    cells = data["cells"]
+    values = data["values"]
+    pick = np.random.random(len(cells)) < fraction
+    cells = cells[pick]
+    values = values[pick]
+    x, y, x_val, y_val = formatMinimaxTrainData(cells,values,validation)
+    print(f"training: {len(x)}\tvalidation: {len(x_val)}\tratio: {len(x_val)/len(x)}")
     del cells, values
+    model = load_model(modelFile)
+    model.summary()
+    if len(x_val) > 0:
+        lastValLoss = model.evaluate(x_val,y_val,verbose = 2)
+        print(f"Initial valLoss: {lastValLoss}")
+        round = 0
+        while True:
+            t0 = time.time()
+            history = model.fit(
+                    x,
+                    y,
+                    batch_size = 64,
+                    shuffle = True,
+                    epochs = 1,
+                    verbose = 0,
+                    validation_data = (x_val, y_val))
+            loss = history.history["loss"][-1]
+            valLoss = history.history['val_loss'][-1]
+            print(f"round: {round}\tdtime:{time.time()-t0}\tloss: {loss}\tvalLoss: {valLoss}\t{'(*)' if valLoss < lastValLoss else ''}")
+            if valLoss < lastValLoss:
+                model.save(modelFile)
+                lastValLoss = valLoss
+            round += 1
+    else:
+        lastLoss = model.evaluate(x,y,verbose = 2)
+        print(f"Initial loss: {lastLoss}")
+        round = 0
+        while True:
+            t0 = time.time()
+            history = model.fit(
+                    x,
+                    y,
+                    batch_size = 64,
+                    shuffle = True,
+                    epochs = 1,
+                    verbose = 0)        
+            loss = history.history['loss'][-1]
+            print(f"round: {round}\tdtime:{time.time()-t0}\tloss: {loss}\t{'(*)' if loss < lastLoss else ''}")
+            if loss < lastLoss:
+                model.save(modelFile)
+                lastLoss = loss
+        
+    
+def modelDesign(boardSize):
     model = Sequential()
     model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
-    model.add(Conv2D(filters = 1,kernel_size = (3,3),activation = "tanh"))
-    model.add(Conv2D(filters = 1,kernel_size = (3,3),activation = "tanh"))
-    model.add(Conv2D(filters = 1,kernel_size = (3,3),activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
     model.add(Flatten())
     model.add(Dense(units = 16, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
     model.compile(loss = "mean_absolute_error", optimizer = "SGD")
-    #model = load_model("model_new.h5")
+#    model = load_model("model_new4.h5")
     model.summary()
-    #r = model.evaluate(x,y)
-    #print(r)
-    lastValLoss = np.inf
-    while True:
-        history = model.fit(
-                x,
-                y,
-                batch_size = 64,
-                shuffle = True,
-                epochs = 1,
-                verbose = 2,
-                validation_data = (x_val, y_val))        
-        valLoss = history.history['val_loss'][-1]
-        if valLoss < lastValLoss:
-            model.save("model.h5")
-            lastValLoss = valLoss
-        
+    modelOrig = load_model("model7.h5")
+    for i,layer in enumerate(model.layers):
+        if i in (3,6,9):
+            w = layer.get_weights()
+            w[0][:] = 0
+            w[0][1,1] = np.identity(64)
+            w[1][:] = 0
+            layer.set_weights(w)
+        else:
+            layer.set_weights(modelOrig.layers[i - (i > 3) - (i > 6) - (i > 9)].get_weights())
+    data = np.load("data7.npz")
+    cells = data["cells"]
+    values = data["values"]
+    x, y, x_val, y_val = formatMinimaxTrainData(cells,values)
+    del cells, values
+    lastValLoss = model.evaluate(x_val,y_val,verbose = 2)
+    print(f"Initial validation loss: {lastValLoss}")
+    model.save("model7_new.h5")
+
+def modelDesign3(boardSize,modelFile):
+    model = Sequential()
+    model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
+    model.add(Flatten())
+    model.add(Dense(units = 64, activation = "tanh"))
+    model.add(Dense(units = 1, activation = "tanh"))
+    model.compile(loss = "mean_absolute_error", optimizer = "SGD")
+    model.summary()
+    model.save(modelFile)
+
+def modelAlter(modelFile):
+    model = load_model(modelFile)
+    pass
+    model.save(modelFile)
     
 if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
-    minimaxTrain(7)
-    #modelDesign()
+    #modelAlter("model7_lr.h5")
+    minimaxTrain("data7.npz","model7.h5",fraction = 1)
+    #modelDesign(7)
+    #saveMinimaxTrainData(7,"data7.npz","model7_lr.h5",deltaSize = 4096)
+    #modelDesign3(3,"model3_new.h5")
+    #print(dataMinError("data3.npz"))
+    #minimaxTrain("data3.npz","model3_new.h5",validation=0)
 
     
     
