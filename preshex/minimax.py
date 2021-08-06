@@ -117,7 +117,7 @@ class Minimax(object):
                 self.clearParents()
                 return self
             elif self.successors:
-                return self.bestSuccessor().expandLeaf()
+                return self.bestSuccessor().expandLeafClassic()
 
         def computeSortedSuccessors(self):
             return sorted([s for m,s in self.successors], key = self.successorSortKey, reverse = True)
