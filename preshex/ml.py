@@ -112,8 +112,9 @@ def heuristicTest(boardSize):
 
 class Predictor(object):
     
-    def __init__(self,modelFile,boardSize,batchSize = multiprocessing.cpu_count()):
+    def __init__(self,modelFile,boardSize,batchSize = multiprocessing.cpu_count(),k = 64):
         self.modelFile = modelFile
+        self.k = k
         self.input = np.zeros((batchSize,) + (boardSize,)*2 + (3,))
         self.input[:,0,:,1] = 1
         self.input[:,-1,:,1] = 1
@@ -133,6 +134,9 @@ class Predictor(object):
             self.condition.notifyAll()
         self.thread.join()
 
+    def postPredict(self,x):
+        return x/(1+np.abs(x)**self.k)**(1/self.k)
+
     def run(self):
         with self.condition:
             import tensorflow as tf
@@ -147,7 +151,7 @@ class Predictor(object):
                     self.condition.wait()
                 if self.stop:
                     break
-                self.prediction = model.predict(self.input[:self.n])
+                self.prediction = self.postPredict(model.predict(self.input[:self.n]))
                 self.ready[:self.n] = True
                 self.n = 0
                 self.condition.notifyAll()
