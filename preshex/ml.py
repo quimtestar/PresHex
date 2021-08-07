@@ -212,7 +212,7 @@ def hashCells(cells):
     digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
     return int.from_bytes(digest, byteorder = "big", signed = True)
     
-def generateMinimaxTrainDataPredictor(boardSize,predictor = None, size = 4000000, deltaSize = 2000):
+def generateMinimaxTrainDataPredictor(boardSize,predictor = None, size = 4000000, deltaSize = 2000, terminal = False):
     lock = RLock()
     cells = []
     values = []
@@ -224,7 +224,7 @@ def generateMinimaxTrainDataPredictor(boardSize,predictor = None, size = 4000000
             while True:
                 minimax = terminalSmallMinimax(boardSize,predictor,deltaSize)
                 with lock:
-                    for board,value in minimax.collectLeafValues():
+                    for board,value in minimax.collectLeafValues(terminal = terminal):
                         cells.append(board.cells)
                         values.append(value)
                     print(f"----> data size:{len(cells)}",file = sys.stderr)
@@ -240,15 +240,15 @@ def generateMinimaxTrainDataPredictor(boardSize,predictor = None, size = 4000000
     return np.array(cells), np.array(values)
 
 
-def generateMinimaxTrainData(boardSize,modelFile = None, size = 4000000, deltaSize = 2000):
+def generateMinimaxTrainData(boardSize,modelFile = None, size = 4000000, deltaSize = 2000, terminal = False):
     if modelFile:
         with Predictor(modelFile,boardSize) as predictor:
-            return generateMinimaxTrainDataPredictor(boardSize,predictor,size,deltaSize)
+            return generateMinimaxTrainDataPredictor(boardSize, predictor, size = size, deltaSize = deltaSize, terminal = terminal)
     else:
-        return generateMinimaxTrainDataPredictor(boardSize,size = size, deltaSize = deltaSize)
+        return generateMinimaxTrainDataPredictor(boardSize, size = size, deltaSize = deltaSize, terminal = terminal)
 
-def saveMinimaxTrainData(boardSize,dataFile,modelFile = None,size = 4000000, deltaSize = 2000):
-    cells, values = generateMinimaxTrainData(boardSize,modelFile,size,deltaSize)
+def saveMinimaxTrainData(boardSize,dataFile,modelFile = None,size = 4000000, deltaSize = 2000, terminal = False):
+    cells, values = generateMinimaxTrainData(boardSize,modelFile,size,deltaSize,terminal)
     np.savez(dataFile,cells = cells,values = values)
 
     

@@ -289,8 +289,11 @@ class Minimax(object):
         if self.root:
             return self.root.leafDistance()
         
-    def collectLeafValues(self):
-        return map(lambda w: (w[0],w[1].leafValue()), self.nodes.items())
+    def collectLeafValues(self, terminal = False):
+        nodeItems = self.nodes.items()
+        if terminal:
+            nodeItems =  filter(lambda w:w[1].successors == [], nodeItems)
+        return map(lambda w: (w[0],w[1].leafValue()), nodeItems)
 
     def moveDepth(self):
         return len(self.boardsByMoves)
