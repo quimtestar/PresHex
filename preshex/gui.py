@@ -33,7 +33,7 @@ class BoardWidget(QWidget):
         self.board = board
         self.history = []
         self.historyPointer = 0
-        self.minimax = Minimax(heuristic = Predictor("model.h5",board.size).predict)
+        self.minimax = Minimax(heuristic = Predictor("model7.h5",board.size).predict) if board.size == 7 else Minimax()
         self.minimaxWorker = None
         
     def working(self):
