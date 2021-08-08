@@ -80,7 +80,8 @@ class BoardWidget(QWidget):
         
         
         font = QFont("Monospace")
-        font.setPixelSize(r/(2*math.sqrt(3)))
+        font.setWeight(QFont.Black)
+        font.setPixelSize(r/(2*math.sqrt(3))*1.25)
         fontMetrics = QFontMetrics(font)
         painter.setFont(font)
         painter.setPen(QColor(0,0,0))
