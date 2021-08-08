@@ -11,7 +11,7 @@ class Move(object):
         self.j = j
         
     def __repr__(self):
-        return f"{self.columnName(self.i)}{self.rowName(self.j)}"
+        return f"{self.rowName(self.j)}{self.columnName(self.i)}"
     
     def __hash__(self):
         return hash((self.i, self.j))
@@ -46,32 +46,32 @@ class Move(object):
         return [m for m in g() if self.adjacent(m)]
     
     @staticmethod
-    def columnName(i):
+    def rowName(j):
         base = ord('z') - ord('a') + 1
         digits = []
-        i += 1
-        while i > 0:
-            digits.append((i - 1) % base + 1)
-            i = (i - 1)//base
+        j += 1
+        while j > 0:
+            digits.append((j - 1) % base + 1)
+            j = (j - 1)//base
         digits.reverse()
         return "".join([chr(ord('a') + x - 1) for x in digits])
         
     @staticmethod
-    def columnByName(s):
-        i = 0
+    def rowByName(s):
+        j = 0
         for c in s:
-            i *= ord('z') - ord('a') + 1
-            i += ord(c) - ord('a') + 1
-        i -= 1
-        return i
+            j *= ord('z') - ord('a') + 1
+            j += ord(c) - ord('a') + 1
+        j -= 1
+        return j
 
     @staticmethod
-    def rowName(j):
-        return str(j)
+    def columnName(i):
+        return str(i + 1)
         
     @staticmethod
-    def rowByName(s):
-        return int(s)
+    def columnByName(s):
+        return int(s) - 1
 
 class Board(object):
     

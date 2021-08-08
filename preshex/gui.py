@@ -94,7 +94,7 @@ class BoardWidget(QWidget):
             
         painter.setPen(QColor(255,255,255))
         for j in range(self.board.size):
-            s = str(j)
+            s = Move.rowName(j)
             br = fontMetrics.boundingRect(s)
             c = (2*center(-1,j) + center(0,j))/3
             painter.drawText(c-(br.topLeft()+br.bottomRight())/2,s)
