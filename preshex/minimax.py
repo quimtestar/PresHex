@@ -292,7 +292,7 @@ class Minimax(object):
     def collectLeafValues(self, terminal = False):
         nodeItems = self.nodes.items()
         if terminal:
-            nodeItems =  filter(lambda w:w[1].bestLeaf()[0].successors == [], nodeItems)
+            nodeItems =  filter(lambda w:w[1].bestLeaf()[0].board.winner, nodeItems)
         return map(lambda w: (w[0],w[1].leafValue()), nodeItems)
 
     def moveDepth(self):
