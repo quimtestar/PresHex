@@ -348,7 +348,7 @@ def modelDesign(boardSize):
     model.add(Flatten())
     model.add(Dense(units = 16, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
-    model.compile(loss = "mean_absolute_error", optimizer = "SGD")
+    model.compile(loss = "mean_squared_error", optimizer = "SGD")
 #    model = load_model("model_new4.h5")
     model.summary()
     modelOrig = load_model("model7.h5")
@@ -377,7 +377,7 @@ def modelDesign3(boardSize,modelFile):
     model.add(Flatten())
     model.add(Dense(units = 64, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
-    model.compile(loss = "mean_absolute_error", optimizer = "SGD")
+    model.compile(loss = "mean_squared_error", optimizer = "SGD")
     model.summary()
     model.save(modelFile)
 
@@ -389,13 +389,13 @@ def modelAlter(modelFile):
 if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
-    #modelAlter("model7_lr.h5")
     minimaxTrain("data7.npz","model7.h5",fraction = 1)
     #modelDesign(7)
-    #saveMinimaxTrainData(7,"data7.npz","model7_lr.h5",deltaSize = 4096)
+    #saveMinimaxTrainData(7,"data7.npz","model7.h5",deltaSize = 2**13)
     #modelDesign3(3,"model3_new.h5")
     #print(dataMinError("data3.npz"))
     #minimaxTrain("data3.npz","model3_new.h5",validation=0)
+    #modelAlter("model7_sq.h5")
 
     
     
