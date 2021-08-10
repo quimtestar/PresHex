@@ -441,7 +441,7 @@ class PresHexMainWindow(QMainWindow):
         
 
     def status(self,s):
-         self.statusBar().showMessage(s,60*1000)
+         self.statusBar().showMessage(s)
          print(s,file = sys.stderr)
                 
     def exit(self):
