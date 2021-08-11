@@ -210,8 +210,8 @@ class Minimax(object):
     def statusText(self):
         return f"({self.size()}) {self.bestChainStr()}"
 
-    def expand(self, size, margin, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepthFactor = None, uniformDepthRandomization = 0):
-        fully = False
+    def expand(self, size, margin, target = None, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepthFactor = None, uniformDepthRandomization = 0):
+        reached = False
         t0 = time.time()
         while self.size() >= size:
             if self.prune(margin) <= 0:
@@ -228,8 +228,9 @@ class Minimax(object):
                 if time.time() - t0 >= statusInterval:
                     status(self.statusText())
                     t0 = time.time()
-                if not self.expandLeaf(uniformDepthFactor,uniformDepthRandomization):
-                    fully = True
+                expanded = self.expandLeaf(uniformDepthFactor,uniformDepthRandomization)
+                if (not expanded) or (target is not None and abs(self.leafValue()) > target):
+                    reached = True
                     break
             else:
                 continue
@@ -238,7 +239,7 @@ class Minimax(object):
             if self.prune(margin) <= 0:
                 break
         status(self.statusText())
-        return fully
+        return reached
 
     def prune(self, amount = 0):
         pruned = 0
@@ -269,10 +270,13 @@ class Minimax(object):
     def bestMove(self):
         if self.root:
             return self.root.bestMove()
-        
     def leafValue(self):
         if self.root:
             return self.root.leafValue()
+        
+    def valueFactor(self):
+        if self.root:
+            return self.root.valueFactor
         
     def leafDistance(self):
         if self.root:
