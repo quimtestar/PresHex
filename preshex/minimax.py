@@ -39,22 +39,11 @@ class Minimax(object):
             return self._bestLeaf
         
         def computeBestMovesAndSuccessors(self):
-            items = self.successors
-            best = []
-            while items:
-                pivot = self.successorSortKey(items[0][1])
-                best = []
-                items_ = []
-                for w in items:
-                    k = self.successorSortKey(w[1])
-                    if k >= pivot:
-                        best.append(w)
-                        if k > pivot:
-                            items_.append(w)
-                items = items_
-            if self.successors and not best:    #XXX debugging
-                print(f"successors: {self.successors}, best:{best}")  
-            return best
+            if self.successors:
+                maxKey = max(map(lambda s:self.successorSortKey(s[1]),self.successors))
+                return list(filter(lambda s:self.successorSortKey(s[1]) >= maxKey,self.successors))
+            else:
+                return []
         
         def bestMovesAndSuccessors(self):
             if self._bestMovesAndSuccessors is None:
