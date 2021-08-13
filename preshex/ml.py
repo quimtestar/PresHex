@@ -79,7 +79,7 @@ def generateModel(boardSize):
     model.add(Flatten())
     model.add(Dense(units = 16, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
-    model.compile(loss = "mean_absolute_error", optimizer = "SGD")
+    model.compile(loss = "mean_squared_error", optimizer = "SGD")
     return model
         
 
@@ -349,7 +349,7 @@ def modelDesign(boardSize):
     model.add(Flatten())
     model.add(Dense(units = 16, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
-    model.compile(loss = "mean_absolute_error", optimizer = "SGD")
+    model.compile(loss = "mean_squared_error", optimizer = "SGD")
 #    model = load_model("model_new4.h5")
     model.summary()
     modelOrig = load_model("model7.h5")
@@ -378,7 +378,7 @@ def modelDesign3(boardSize,modelFile):
     model.add(Flatten())
     model.add(Dense(units = 64, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
-    model.compile(loss = "mean_absolute_error", optimizer = "SGD")
+    model.compile(loss = "mean_squared_error", optimizer = "SGD")
     model.summary()
     model.save(modelFile)
 
