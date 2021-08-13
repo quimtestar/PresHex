@@ -200,11 +200,11 @@ def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSiz
     size = initialSize
     for board in game[::-1]:
         minimax.setRootBoard(board)
-        reached = minimax.expand(size,1024,target = target,statusInterval = 60 * multiprocessing.cpu_count())
+        reached = minimax.expand(size,1024,target = target,statusInterval = 10 * multiprocessing.cpu_count())
         if not reached:
             break
         size += deltaSize
-    minimax.expand(size,1024,target = None,statusInterval = 60 * multiprocessing.cpu_count())
+    minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())
     return minimax
 
 def hashCells(cells):
