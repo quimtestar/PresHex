@@ -251,6 +251,17 @@ def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, target = None, s
     cells, values = generateMinimaxTrainData(boardSize,modelFile,target,size,deltaSize,terminal)
     np.savez(dataFile,cells = cells,values = values)
 
+def saveRootMinimaxTrainData(boardSize, dataFile, modelFile, size = 2**22, randomization = 1):
+    with Predictor(modelFile,boardSize) as predictor:
+        minimax = Minimax(Board(boardSize), heuristic = predictor.predict)
+        minimax.expand(size,1024,statusInterval = 10,uniformDepthFactor = np.inf, uniformDepthRandomization = randomization)
+        cells = []
+        values = []
+        for board,value in minimax.collectLeafValues():
+            cells.append(board.cells)
+            values.append(value)
+        np.savez(dataFile,cells = cells,values = values)        
+
     
 def formatMinimaxTrainData(cells,values,validation = 1/16):
     hashes = np.apply_along_axis(lambda w:hashCells(w.reshape(cells.shape[1:])),1,cells.reshape((cells.shape[0],np.product(cells.shape[1:]))))
@@ -407,14 +418,15 @@ def checkAccuracy(boardSize,modelFile):
 if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
-    #minimaxTrain("data7.npz","model7.h5",fraction = 1)
+    minimaxTrain("data7_root.npz","model7.h5",fraction = 1)
     #modelDesign(7)
-    #saveMinimaxTrainData(7,"data7.npz","model7.h5",deltaSize = 2**13)
+    #saveMinimaxTrainData(7,"data7.npz","model7.h5",target = 0.6, deltaSize = 2**12)
+    #saveRootMinimaxTrainData(7,"data7_root.npz","model7.h5", size = 2**22, randomization = 1)
     #modelDesign3(3,"model3_new.h5")
     #print(dataMinError("data3.npz"))
     #minimaxTrain("data3.npz","model3_new.h5",validation=0)
     #modelAlter("model7_sq.h5")
-    checkAccuracy(7,"model7.h5")
+    #checkAccuracy(7,"model7.h5")
 
     
     
