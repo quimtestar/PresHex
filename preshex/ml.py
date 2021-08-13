@@ -200,11 +200,11 @@ def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSiz
     size = initialSize
     for board in game[::-1]:
         minimax.setRootBoard(board)
-        reached = minimax.expand(size,1024,target = target,statusInterval = 60 * multiprocessing.cpu_count())
+        reached = minimax.expand(size,1024,target = target,statusInterval = 10 * multiprocessing.cpu_count())
         if not reached:
             break
         size += deltaSize
-    minimax.expand(size,1024,target = None,statusInterval = 60 * multiprocessing.cpu_count())
+    minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())
     return minimax
 
 def hashCells(cells):
@@ -406,13 +406,14 @@ def checkAccuracy(boardSize,modelFile):
 if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
-    #modelAlter("model7_lr.h5")
-    #minimaxTrain("data7.npz","model7.h5",fraction = 1)
+    minimaxTrain("data7_root.npz","model7.h5",fraction = 1)
     #modelDesign(7)
-    saveMinimaxTrainData(7,"data7.npz","model7.h5",target = 0.5,deltaSize = 256, terminal = True)
+    #saveMinimaxTrainData(7,"data7.npz","model7.h5",target = 0.6, deltaSize = 2**12)
+    #saveRootMinimaxTrainData(7,"data7_root.npz","model7.h5", size = 2**22, randomization = 1)
     #modelDesign3(3,"model3_new.h5")
     #print(dataMinError("data3.npz"))
     #minimaxTrain("data3.npz","model3_new.h5",validation=0)
+    #modelAlter("model7_sq.h5")
     #checkAccuracy(7,"model7.h5")
 
     

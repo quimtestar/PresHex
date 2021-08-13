@@ -221,7 +221,9 @@ class Minimax(object):
                 if self.prune(margin) <= 0:
                     break
             size0 = self.size()
-            status(self.statusText())
+            if time.time() - t0 >= statusInterval:
+                status(self.statusText())
+                t0 = time.time()
             while self.size() < size0 + margin:
                 if aborted():
                     break
