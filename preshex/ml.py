@@ -12,6 +12,7 @@ import sys
 from threading import Thread, Condition, RLock, Lock
 import hashlib
 import time
+import math
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -213,7 +214,7 @@ def hashCells(cells):
     digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
     return int.from_bytes(digest, byteorder = "big", signed = True)
     
-def generateMinimaxTrainDataPredictor(boardSize, predictor = None, target = None, size = 2**22, deltaSize = 2048, terminal = False):
+def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, terminal = False):
     lock = RLock()
     cells = []
     values = []
@@ -223,6 +224,13 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, target = None
         
         def run(self):
             while True:
+                if targetFrom is None:
+                    target = None
+                elif targetAlpha == 0:
+                    target = targetFrom + random.random() * (1 - targetFrom)
+                else:
+                    x = random.random()
+                    target = 1/targetAlpha * math.log(x * math.exp(targetAlpha) + (1 - x) * math.exp(targetAlpha * targetFrom))
                 minimax = terminalSmallMinimax(boardSize,predictor,target = target,deltaSize = deltaSize)
                 with lock:
                     for board,value in minimax.collectLeafValues(terminal = terminal):
@@ -241,15 +249,15 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, target = None
     return np.array(cells), np.array(values)
 
 
-def generateMinimaxTrainData(boardSize,  modelFile = None, target = None, size = 2**22, deltaSize = 2048, terminal = False):
+def generateMinimaxTrainData(boardSize,  modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, terminal = False):
     if modelFile:
         with Predictor(modelFile,boardSize) as predictor:
-            return generateMinimaxTrainDataPredictor(boardSize, predictor, target = target, size = size, deltaSize = deltaSize, terminal = terminal)
+            return generateMinimaxTrainDataPredictor(boardSize, predictor, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, terminal = terminal)
     else:
-        return generateMinimaxTrainDataPredictor(boardSize, size = size, target = target, deltaSize = deltaSize, terminal = terminal)
+        return generateMinimaxTrainDataPredictor(boardSize, size = size, targetFrom = targetFrom, targetAlpha = targetAlpha, deltaSize = deltaSize, terminal = terminal)
 
-def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, target = None, size = 2**22, deltaSize = 2048, terminal = False):
-    cells, values = generateMinimaxTrainData(boardSize,modelFile,target,size,deltaSize,terminal)
+def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, terminal = False):
+    cells, values = generateMinimaxTrainData(boardSize,modelFile,targetFrom,targetAlpha,size,deltaSize,terminal)
     np.savez(dataFile,cells = cells,values = values)
 
     
@@ -407,9 +415,9 @@ if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
     #modelAlter("model7_lr.h5")
-    minimaxTrain("data7_root.npz","model7.h5",fraction = 1)
+    #minimaxTrain("data7_root.npz","model7.h5",fraction = 1)
     #modelDesign(7)
-    #saveMinimaxTrainData(7,"data7.npz","model7.h5",target = 0.6, deltaSize = 2**12)
+    saveMinimaxTrainData(7,"data7.npz","model7.h5",targetFrom = 0.6, targetAlpha = math.log(2)/0.05, deltaSize = 2**12)
     #saveRootMinimaxTrainData(7,"data7_root.npz","model7.h5", size = 2**22, randomization = 1)
     #modelDesign3(3,"model3_new.h5")
     #print(dataMinError("data3.npz"))
