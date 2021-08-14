@@ -407,7 +407,7 @@ def modelAlter(modelFile):
     model.save(modelFile)
     
 def checkAccuracy(boardSize,modelFile):
-    minimax = terminalSmallMinimax(boardSize, initialSize = 10000, deltaSize = 0)
+    minimax = terminalSmallMinimax(boardSize, initialSize = 2**20, deltaSize = 0)
     terminals = list(filter(lambda n:n.bestLeaf()[0].board.winner,minimax.nodes.values()))
     input = np.zeros((len(terminals),) + (boardSize,)*2 + (3,))
     input[:,0,:,1] = 1
@@ -420,6 +420,8 @@ def checkAccuracy(boardSize,modelFile):
         return x/(1+np.abs(x)**k)**(1/k)
     predictions = postPredict(model.predict(input))[:,0]
     values = predictions * list(map(lambda n:n.bestLeaf()[0].board.winner,terminals))
+    errors = 1 - values
+    error = np.mean(errors**2)
     pass
 
 if __name__ == '__main__':
