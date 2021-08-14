@@ -177,7 +177,7 @@ class Predictor(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()    
         
-def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSize = 0, deltaSize = 2048,):
+def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, lastExpandRandomization = 1):
     board = Board(boardSize)
     game = []
     while board:
@@ -205,7 +205,7 @@ def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSiz
         if not reached:
             break
         size += deltaSize
-    minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())
+    minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count(),uniformDepthFactor = np.inf, uniformDepthRandomization = lastExpandRandomization)
     return minimax
 
 def hashCells(cells):
@@ -214,7 +214,7 @@ def hashCells(cells):
     digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
     return int.from_bytes(digest, byteorder = "big", signed = True)
     
-def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, terminal = False):
+def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, lastExpandRandomization = 1, terminal = False):
     lock = RLock()
     cells = []
     values = []
@@ -231,7 +231,7 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = 
                 else:
                     x = random.random()
                     target = 1/targetAlpha * math.log(x * math.exp(targetAlpha) + (1 - x) * math.exp(targetAlpha * targetFrom))
-                minimax = terminalSmallMinimax(boardSize,predictor,target = target,deltaSize = deltaSize)
+                minimax = terminalSmallMinimax(boardSize,predictor,target = target,deltaSize = deltaSize, lastExpandRandomization = lastExpandRandomization)
                 with lock:
                     for board,value in minimax.collectLeafValues(terminal = terminal):
                         cells.append(board.cells)
@@ -249,16 +249,27 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = 
     return np.array(cells), np.array(values)
 
 
-def generateMinimaxTrainData(boardSize,  modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, terminal = False):
+def generateMinimaxTrainData(boardSize,  modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, lastExpandRandomization = 1, terminal = False):
     if modelFile:
         with Predictor(modelFile,boardSize) as predictor:
-            return generateMinimaxTrainDataPredictor(boardSize, predictor, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, terminal = terminal)
+            return generateMinimaxTrainDataPredictor(boardSize, predictor, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, lastExpandRandomization = lastExpandRandomization, terminal = terminal)
     else:
-        return generateMinimaxTrainDataPredictor(boardSize, size = size, targetFrom = targetFrom, targetAlpha = targetAlpha, deltaSize = deltaSize, terminal = terminal)
+        return generateMinimaxTrainDataPredictor(boardSize, size = size, targetFrom = targetFrom, targetAlpha = targetAlpha, deltaSize = deltaSize, lastExpandRandomization = lastExpandRandomization, terminal = terminal)
 
-def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, terminal = False):
-    cells, values = generateMinimaxTrainData(boardSize,modelFile,targetFrom,targetAlpha,size,deltaSize,terminal)
+def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, lastExpandRandomization = 1, terminal = False):
+    cells, values = generateMinimaxTrainData(boardSize,modelFile,targetFrom,targetAlpha,size,deltaSize,lastExpandRandomization, terminal)
     np.savez(dataFile,cells = cells,values = values)
+
+def saveRootMinimaxTrainData(boardSize, dataFile, modelFile, size = 2**22, randomization = 1):
+    with Predictor(modelFile,boardSize) as predictor:
+        minimax = Minimax(Board(boardSize), heuristic = predictor.predict)
+        minimax.expand(size,1024,statusInterval = 10,uniformDepthFactor = np.inf, uniformDepthRandomization = randomization)
+        cells = []
+        values = []
+        for board,value in minimax.collectLeafValues():
+            cells.append(board.cells)
+            values.append(value)
+        np.savez(dataFile,cells = cells,values = values)        
 
     
 def formatMinimaxTrainData(cells,values,validation = 1/16):
