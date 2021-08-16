@@ -13,6 +13,7 @@ from threading import Thread, Condition, RLock, Lock
 import hashlib
 import time
 import math
+from abc import ABC, abstractmethod
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -111,9 +112,66 @@ def heuristicTest(boardSize):
     print(ev)     
             
 
-class Predictor(object):
+class Predictor(ABC):
+
+    def __init__(self,boardSize):
+        self.boardSize = boardSize
+
+    @abstractmethod
+    def predict(self,board):
+        pass
+ 
+    def fastMove(self, board, e = 1):
+        movedBoards = []
+        acc = []
+        infinites = []
+        s = 0
+        for move in board.possibleMoves():
+            movedBoard = board.moveOnCopy(move)
+            movedBoards.append(movedBoard)
+            v = self.predict(movedBoard) * board.turn
+            if math.isclose(v,1):
+                infinites.append(movedBoard)
+                s += math.inf
+            else:
+                s += math.pow((1 + v)/(1 - v),e)
+            acc.append(s)
+        if infinites:
+            return random.choice(infinites)
+        elif s > 0:
+            return movedBoards[bisect.bisect(acc,s*random.random())]
+        elif movedBoards:
+            return random.choice(movedBoards)
+                    
+        
+    def successRatioAttack(self,other,n = 100, e = 1):
+        wins = 0
+        for i in range(n):
+            board = Board(self.boardSize)
+            while not board.winner:
+                for predictor in [self,other]:
+                    if board.winner:
+                        break
+                    board = predictor.fastMove(board, e)
+            wins += board.winner > 0
+            print (f"-----> n:{i+1}   wins:{wins}")
+        return wins/n
     
-    def __init__(self,modelFile,boardSize,batchSize = multiprocessing.cpu_count(),k = 64):
+    def successRatioDefend(self,other,n = 100, e = 1):
+        return 1 - other.successRatioAttack(self,n,e)
+    
+    def successRatioAverage(self,other,n = 100, e = 1):
+        return (self.successRatioAttack(other,n,e) + self.successRatioDefend(other,n,e))/2
+
+class VoidPredictor(Predictor):
+    
+    def predict(self,board):
+        return board.winner
+
+class ModelPredictor(Predictor):
+    
+    def __init__(self,boardSize,modelFile,batchSize = multiprocessing.cpu_count(),k = 64):
+        super().__init__(boardSize)
         self.modelFile = modelFile
         self.k = k
         self.input = np.zeros((batchSize,) + (boardSize,)*2 + (3,))
@@ -124,7 +182,7 @@ class Predictor(object):
         self.n = 0
         self.pending = np.zeros(batchSize, dtype = bool)
         self.ready = np.zeros(batchSize, dtype = bool)
-        self.thread = Thread(target = self.run, name = "Predictor", daemon = True)
+        self.thread = Thread(target = self.run, name = "ModelPredictor", daemon = True)
         self.condition = Condition()
         self.stop = False
         self.thread.start()
@@ -175,28 +233,14 @@ class Predictor(object):
         return self
     
     def __exit__(self, exc_type, exc_value, traceback):
-        self.close()    
+        self.close()
         
-def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, lastExpandRandomization = 1):
+def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
     board = Board(boardSize)
     game = []
     while board:
         game.append(board)
-        boards = []
-        accumulatedPredict = []
-        s = 0
-        for move in board.possibleMoves():
-            boards.append(board.moveOnCopy(move))
-            if predictor:
-                s += 1 + predictor.predict(board) * board.turn
-            accumulatedPredict.append(s)
-        if boards:
-            if s > 0:
-                board = boards[bisect.bisect(accumulatedPredict,s*random.random())]
-            else:
-                board = random.choice(boards)
-        else:
-            board = None
+        board = predictor.fastMove(board, selectionExponent)
     minimax = Minimax(heuristic = predictor.predict) if predictor else Minimax()
     size = initialSize
     for board in game[::-1]:
@@ -205,7 +249,7 @@ def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSiz
         if not reached:
             break
         size += deltaSize
-    minimax.selectionExponent = 1
+    minimax.selectionExponent = selectionExponent
     minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())
     return minimax
 
@@ -215,7 +259,7 @@ def hashCells(cells):
     digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
     return int.from_bytes(digest, byteorder = "big", signed = True)
     
-def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, lastExpandRandomization = 1, terminal = False):
+def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
     lock = RLock()
     cells = []
     values = []
@@ -232,7 +276,7 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = 
                 else:
                     x = random.random()
                     target = 1/targetAlpha * math.log(x * math.exp(targetAlpha) + (1 - x) * math.exp(targetAlpha * targetFrom))
-                minimax = terminalSmallMinimax(boardSize,predictor,target = target,deltaSize = deltaSize, lastExpandRandomization = lastExpandRandomization)
+                minimax = terminalSmallMinimax(boardSize,predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent)
                 with lock:
                     for board,value in minimax.collectLeafValues(terminal = terminal):
                         cells.append(board.cells)
@@ -250,19 +294,19 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = 
     return np.array(cells), np.array(values)
 
 
-def generateMinimaxTrainData(boardSize,  modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, lastExpandRandomization = 1, terminal = False):
+def generateMinimaxTrainData(boardSize,  modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
     if modelFile:
-        with Predictor(modelFile,boardSize) as predictor:
-            return generateMinimaxTrainDataPredictor(boardSize, predictor, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, lastExpandRandomization = lastExpandRandomization, terminal = terminal)
+        with ModelPredictor(boardSize,modelFile) as predictor:
+            return generateMinimaxTrainDataPredictor(boardSize, predictor, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
     else:
-        return generateMinimaxTrainDataPredictor(boardSize, size = size, targetFrom = targetFrom, targetAlpha = targetAlpha, deltaSize = deltaSize, lastExpandRandomization = lastExpandRandomization, terminal = terminal)
+        return generateMinimaxTrainDataPredictor(boardSize, size = size, targetFrom = targetFrom, targetAlpha = targetAlpha, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
 
-def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, lastExpandRandomization = 1, terminal = False):
-    cells, values = generateMinimaxTrainData(boardSize,modelFile,targetFrom,targetAlpha,size,deltaSize,lastExpandRandomization, terminal)
+def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
+    cells, values = generateMinimaxTrainData(boardSize,modelFile,targetFrom,targetAlpha,size,deltaSize,selectionExponent, terminal)
     np.savez(dataFile,cells = cells,values = values)
 
 def saveRootMinimaxTrainData(boardSize, dataFile, modelFile, size = 2**22, randomization = 1):
-    with Predictor(modelFile,boardSize) as predictor:
+    with ModelPredictor(boardSize,modelFile) as predictor:
         minimax = Minimax(Board(boardSize), heuristic = predictor.predict)
         minimax.expand(size,1024,statusInterval = 10,uniformDepthFactor = np.inf, uniformDepthRandomization = randomization)
         cells = []
@@ -424,6 +468,13 @@ def checkAccuracy(boardSize,modelFile):
     errors = 1 - values
     error = np.mean(errors**2)
     pass
+
+def measureWinRatio(boardSize, modelFile):
+    with ModelPredictor(boardSize,modelFile) as predictor:
+        voidPredictor = VoidPredictor(boardSize)
+        attackRatio = predictor.successRatioAttack(voidPredictor,e = 3)
+        defendRatio = predictor.successRatioDefend(voidPredictor,e = 3)
+        print(f"attackRatio: {attackRatio}  defendRatio: {defendRatio}")
 
 if __name__ == '__main__':
     #heuristicTrain(7)

@@ -18,7 +18,7 @@ from minimax import Minimax
 from pypref import SinglePreferences
 import os
 import threading
-from ml import Predictor
+from ml import ModelPredictor
 
 
 class BoardWidget(QWidget):
@@ -33,7 +33,7 @@ class BoardWidget(QWidget):
         self.board = board
         self.history = []
         self.historyPointer = 0
-        self.minimax = Minimax(heuristic = Predictor("model7.h5",board.size).predict) if board.size == 7 else Minimax()
+        self.minimax = Minimax(heuristic = ModelPredictor(board.size,"model7.h5").predict) if board.size == 7 else Minimax()
         self.minimaxWorker = None
         
     def working(self):
