@@ -12,10 +12,9 @@ class Minimax(object):
 
     class Node(object):
         
-        def __init__(self, minimax, board, selectionExponent = 3):
+        def __init__(self, minimax, board):
             self.minimax = minimax
             self.board = board
-            self.selectionExponent = selectionExponent
             self.valueFactor = board.turn
             self.parentBoards = set()
             self.successors = None
@@ -52,7 +51,7 @@ class Minimax(object):
                         infinites.append((move,node))
                         s += math.inf
                     else:
-                        s += math.pow((1 + v)/(1 - v),self.selectionExponent)
+                        s += math.pow((1 + v)/(1 - v),self.minimax.selectionExponent)
                     acc.append(s)
                 if infinites:
                     return random.choice(infinites)
@@ -178,10 +177,11 @@ class Minimax(object):
                     s.trace(indent = indent + 8, rank = r, file = file)
             
     
-    def __init__(self,board = None, heuristic = lambda board:0):
+    def __init__(self,board = None, heuristic = lambda board:0, selectionExponent = 3):
         self.nodes = {}
         self.boardsByMoves = []
         self.heuristic = heuristic
+        self.selectionExponent = selectionExponent
         self.pruneDeque = deque()
         self.root = None
         if board:
