@@ -206,7 +206,7 @@ def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSiz
             break
         size += deltaSize
     minimax.selectionExponent = 1
-    minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count(),uniformDepthFactor = np.inf)
+    minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())
     return minimax
 
 def hashCells(cells):
