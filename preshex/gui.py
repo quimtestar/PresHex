@@ -253,7 +253,7 @@ class BoardWidget(QWidget):
     def stopMinimax(self):
         if self.minimaxWorker:
             self.minimaxWorker.abort()
-            move = self.minimax.bestMove()
+            move = self.minimax.selectedMove()
             if move:
                 self.move(move)
         
@@ -261,7 +261,7 @@ class BoardWidget(QWidget):
         if self.minimaxWorker:
             self.minimaxWorker.wait()
             if not self.minimaxWorker.aborted():        
-                move = self.minimax.bestMove()
+                move = self.minimax.selectedMove()
                 if move:
                     self.move(move)
             self.minimaxWorker = None

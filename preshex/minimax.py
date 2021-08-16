@@ -6,20 +6,23 @@ import math
 import time
 import numpy as np
 import utils
+import bisect
 
 class Minimax(object):
 
     class Node(object):
         
-        def __init__(self, minimax, board):
+        def __init__(self, minimax, board, selectionExponent = 3):
             self.minimax = minimax
             self.board = board
+            self.selectionExponent = selectionExponent
             self.valueFactor = board.turn
             self.parentBoards = set()
             self.successors = None
             self._ownValue = None
-            self._bestLeaf = None
+            self._selectedMoveAndSuccessor = None
             self._bestMovesAndSuccessors = None
+            self._bestLeaf = None
             self._sortedSuccessors = None
         
         def computeOwnValue(self):
@@ -38,6 +41,39 @@ class Minimax(object):
                 self._bestLeaf = self.computeBestLeaf()
             return self._bestLeaf
         
+        def computeSelectedMoveAndSuccessor(self):
+            if self.successors:
+                s = 0
+                acc = []
+                infinites = []
+                for move,node in self.successors:
+                    v = self.successorSortKey(node)
+                    if math.isclose(v,1):
+                        infinites.append((move,node))
+                        s += math.inf
+                    else:
+                        s += math.pow((1 + v)/(1 - v),self.selectionExponent)
+                    acc.append(s)
+                if infinites:
+                    return random.choice(infinites)
+                elif s > 0:
+                    return self.successors[bisect.bisect(acc,s*random.random())]
+                else:
+                    return random.choice(self.successors)
+            else:
+                return None, None
+            
+        def selectedMoveAndSuccessor(self):
+            if self._selectedMoveAndSuccessor is None:
+                self._selectedMoveAndSuccessor = self.computeSelectedMoveAndSuccessor()
+            return self._selectedMoveAndSuccessor
+        
+        def selectedMove(self):
+            return self.selectedMoveAndSuccessor()[0]
+        
+        def selectedSuccessor(self):
+            return self.selectedMoveAndSuccessor()[1]
+
         def computeBestMovesAndSuccessors(self):
             if self.successors:
                 maxKey = max(map(lambda s:self.successorSortKey(s[1]),self.successors))
@@ -60,11 +96,8 @@ class Minimax(object):
             return self.bestMoveAndSuccessor()[0]
         
         def bestSuccessor(self):
-            s = self.bestMoveAndSuccessor()[1]
-            if s == None:   #XXX debugging
-                pass
-            return s
-        
+            return self.bestMoveAndSuccessor()[1]
+
         def computeBestLeaf(self):
             if self.successors:
                 s = self.bestSuccessor().bestLeaf()
@@ -84,10 +117,6 @@ class Minimax(object):
             else:
                 return 0
 
-        def successorSortKey(self, s):
-            v = s.leafValue() * self.valueFactor
-            return (v, -s.leafDistance() * v, -len(s.bestMovesAndSuccessors())) 
- 
         def makeSuccessors(self):
             assert self.successors is None
             self.successors = list(map(lambda move: (move, self.minimax.node(self.board.moveOnCopy(move))),self.board.possibleMoves()))
@@ -106,7 +135,10 @@ class Minimax(object):
                 self.clearParents()
                 return self
             elif self.successors:
-                return self.bestSuccessor().expandLeafClassic()
+                return self.selectedSuccessor().expandLeafClassic()
+
+        def successorSortKey(self, s):
+            return s.leafValue() * self.valueFactor
 
         def computeSortedSuccessors(self):
             return sorted([s for m,s in self.successors], key = self.successorSortKey, reverse = True)
@@ -131,6 +163,7 @@ class Minimax(object):
                         return l
 
         def reset(self):
+            self._selectedMoveAndSuccessor = None
             self._bestMovesAndSuccessors = None
             self._sortedSuccessors = None
             if self._bestLeaf:
@@ -150,10 +183,10 @@ class Minimax(object):
                     if node.reset():
                         stack.extend(node.parentBoards)
             
-        def bestChain(self):
-            m,s = self.bestMoveAndSuccessor()
+        def selectedChain(self):
+            m,s = self.selectedMoveAndSuccessor()
             if m and s:
-                return [(m, s)] + s.bestChain()
+                return [(m, s)] + s.selectedChain()
             else:
                 return []
             
@@ -197,18 +230,18 @@ class Minimax(object):
             else:
                 return n
 
-    def bestChain(self):
+    def selectedChain(self):
         if self.root:
-            return self.root.bestChain()
+            return self.root.selectedChain()
         else:
             return []
         
-    def bestChainStr(self):
-        chain = self.bestChain()
+    def selectedChainStr(self):
+        chain = self.selectedChain()
         return f"{[m for m,s in chain]}: {chain[-1][1].ownValue():.2f}" if chain else ""
 
     def statusText(self):
-        return f"({self.size()}) {self.bestChainStr()}"
+        return f"({self.size()}) {self.selectedChainStr()}"
 
     def expand(self, size, margin, target = None, status = lambda s: print(s,file = sys.stderr), aborted = lambda:False, statusInterval = 1, uniformDepthFactor = None, uniformDepthRandomization = 0):
         reached = False
@@ -269,9 +302,10 @@ class Minimax(object):
     def size(self):
         return len(self.nodes)
     
-    def bestMove(self):
+    def selectedMove(self):
         if self.root:
-            return self.root.bestMove()
+            return self.root.selectedMove()
+        
     def leafValue(self):
         if self.root:
             return self.root.leafValue()
