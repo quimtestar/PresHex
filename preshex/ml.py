@@ -158,6 +158,8 @@ class Predictor(ABC):
                 with self.lock:
                     self.count += 1
                     self.wins += win
+                    if self.count % 10 == 0:
+                        self.trace()
             
             def trace(self):
                 print(f"-----> count:{self.count}\twins:{self.wins}\tratio:{self.ratio()}",file = sys.stderr)
@@ -505,7 +507,7 @@ def checkAccuracy(boardSize,modelFile):
     error = np.mean(errors**2)
     pass
 
-def sucessRatio(predictor, other, n = 1000, e = 3):
+def successRatio(predictor, other, n = 1000, e = 3):
     ratio = predictor.successRatioAverage(other,n,e)
     print(f"ratio: {ratio}")
 
@@ -515,7 +517,7 @@ def successRatioAgainstVoid(boardSize, modelFile, n = 1000, e = 3):
 
 def successRatioAgainstOther(boardSize, modelFile, modelFileOther, n = 1000, e = 3):
     with ModelPredictor(boardSize,modelFile) as predictor:
-        with ModelPredictor(boardSize,otherModelFile) as other:
+        with ModelPredictor(boardSize,modelFileOther) as other:
             successRatio(predictor,other,n,e)
 
 if __name__ == '__main__':
