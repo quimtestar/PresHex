@@ -75,15 +75,20 @@ def makeHeuristicData(boardSize, size, processes = multiprocessing.cpu_count()):
 def generateModel(boardSize):
     model = Sequential()
     model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
-    model.add(Conv2D(filters = 16,kernel_size = (3,3),activation = "tanh"))
-    model.add(Conv2D(filters = 32,kernel_size = (3,3),activation = "tanh"))
     model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
+    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
+    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
+    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
     model.add(Flatten())
     model.add(Dense(units = 16, activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
     model.compile(loss = "mean_squared_error", optimizer = "SGD")
     return model
-        
 
 def heuristicTrain(boardSize):
     model = generateModel(boardSize)
@@ -507,6 +512,11 @@ def checkAccuracy(boardSize,modelFile):
     error = np.mean(errors**2)
     pass
 
+def generateSaveModel(boardSize,modelFile):
+    model = generateModel(boardSize)
+    model.summary()
+    model.save(modelFile)
+
 def successRatio(predictor, other, n = 1000, e = 3):
     ratio = predictor.successRatioAverage(other,n,e)
     print(f"ratio: {ratio}")
@@ -524,15 +534,18 @@ if __name__ == '__main__':
     #heuristicTrain(7)
     #heuristicTest(7)
     #modelAlter("model7_lr.h5")
-    #minimaxTrain("data7_root.npz","model7.h5",fraction = 1)
+    #minimaxTrain("data7.npz","model7.h5",fraction = 1)
+    #minimaxTrain("data7_01.npz","model7_01.h5",fraction = 1)
     #modelDesign(7)
-    #saveMinimaxTrainData(7,"data7.npz","model7.h5",targetFrom = 0.6, targetAlpha = math.log(2)/0.05, deltaSize = 2**12)
+    #saveMinimaxTrainData(7,"data7.npz","model7.h5",targetFrom = 0.5, targetAlpha = math.log(2)/0.20, deltaSize = 2**12)
+    #saveMinimaxTrainData(7,"data7_01.npz","model7_01.h5",targetFrom = None, targetAlpha = math.log(2)/0.10, deltaSize = 2**14)
     #saveRootMinimaxTrainData(7,"data7_root.npz","model7.h5", size = 2**22, randomization = 1)
     #modelDesign3(3,"model3_new.h5")
     #print(dataMinError("data3.npz"))
     #minimaxTrain("data3.npz","model3_new.h5",validation=0)
     #checkAccuracy(7,"model7.h5")
-    #successRatioAgainstVoid(7,"model7.h5")
+    #generateSaveModel(7,"model7_01.h5")
+    #successRatioAgainstVoid(7,"model7_old.h5")
     successRatioAgainstOther(7,"model7.h5","model7_old.h5")
 
     
