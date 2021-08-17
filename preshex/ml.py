@@ -144,7 +144,7 @@ class Predictor(ABC):
             return random.choice(movedBoards)
                     
         
-    def successRatioAttack(self,other,n = 100, e = 1):
+    def successRatioAttack(self,other,n = 1000, e = 1):
         predictorSelf = self
         
         class State(object):
@@ -158,7 +158,6 @@ class Predictor(ABC):
                 with self.lock:
                     self.count += 1
                     self.wins += win
-                    self.trace()
             
             def trace(self):
                 print(f"-----> count:{self.count}\twins:{self.wins}\tratio:{self.ratio()}",file = sys.stderr)
@@ -194,10 +193,10 @@ class Predictor(ABC):
             thread.join()
         return state.ratio()
     
-    def successRatioDefend(self,other,n = 100, e = 1):
+    def successRatioDefend(self,other,n = 1000, e = 1):
         return 1 - other.successRatioAttack(self,n,e)
     
-    def successRatioAverage(self,other,n = 100, e = 1):
+    def successRatioAverage(self,other,n = 1000, e = 1):
         return (self.successRatioAttack(other,n,e) + self.successRatioDefend(other,n,e))/2
 
 class VoidPredictor(Predictor):
@@ -506,12 +505,18 @@ def checkAccuracy(boardSize,modelFile):
     error = np.mean(errors**2)
     pass
 
-def measureWinRatio(boardSize, modelFile):
+def sucessRatio(predictor, other, n = 1000, e = 3):
+    ratio = predictor.successRatioAverage(other,n,e)
+    print(f"ratio: {ratio}")
+
+def successRatioAgainstVoid(boardSize, modelFile, n = 1000, e = 3):
     with ModelPredictor(boardSize,modelFile) as predictor:
-        voidPredictor = VoidPredictor(boardSize)
-        attackRatio = predictor.successRatioAttack(voidPredictor,e = 3)
-        defendRatio = predictor.successRatioDefend(voidPredictor,e = 3)
-        print(f"attackRatio: {attackRatio}  defendRatio: {defendRatio}")
+        successRatio(predictor,VoidPredictor(boardSize),n,e)
+
+def successRatioAgainstOther(boardSize, modelFile, modelFileOther, n = 1000, e = 3):
+    with ModelPredictor(boardSize,modelFile) as predictor:
+        with ModelPredictor(boardSize,otherModelFile) as other:
+            successRatio(predictor,other,n,e)
 
 if __name__ == '__main__':
     #heuristicTrain(7)
@@ -525,7 +530,8 @@ if __name__ == '__main__':
     #print(dataMinError("data3.npz"))
     #minimaxTrain("data3.npz","model3_new.h5",validation=0)
     #checkAccuracy(7,"model7.h5")
-    measureWinRatio(7,"model7.h5")
+    #successRatioAgainstVoid(7,"model7.h5")
+    successRatioAgainstOther(7,"model7.h5","model7_old.h5")
 
     
     
