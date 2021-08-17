@@ -210,13 +210,14 @@ class VoidPredictor(Predictor):
     
     def predict(self,board):
         return board.winner
-
+    
 class ModelPredictor(Predictor):
     
-    def __init__(self,boardSize,modelFile,batchSize = multiprocessing.cpu_count(),k = 64):
+    def __init__(self,boardSize,*modelFiles,batchSize = multiprocessing.cpu_count(),k = 64):
         super().__init__(boardSize)
-        self.modelFile = modelFile
+        self.modelFiles = modelFiles
         self.k = k
+        self.m = 0
         self.input = np.zeros((batchSize,) + (boardSize,)*2 + (3,))
         self.input[:,0,:,1] = 1
         self.input[:,-1,:,1] = 1
@@ -247,22 +248,23 @@ class ModelPredictor(Predictor):
             config.gpu_options.allow_growth = True
             set_session(tf.Session(config=config))
             tf.get_logger().setLevel('INFO')            
-            model = load_model(self.modelFile)
+            models = list(map(load_model,self.modelFiles))
             while True:
                 while not self.stop and (self.n <= 0 or self.ready.any()):
                     self.condition.wait()
                 if self.stop:
                     break
-                self.prediction = self.postPredict(model.predict(self.input[:self.n]))
+                self.prediction = self.postPredict(models[self.m].predict(self.input[:self.n]))
                 self.ready[:self.n] = True
                 self.n = 0
                 self.condition.notifyAll()
         
-    def predict(self,board):
+    def predict(self,board,m = 0):
         with self.condition:
             while self.n >= len(self.input) or self.ready[self.n]:
                 self.condition.wait()
             i = self.n
+            self.m = m
             self.input[i,:,:,0] = board.cells
             self.n += 1
             self.condition.notifyAll()
@@ -271,6 +273,18 @@ class ModelPredictor(Predictor):
             self.ready[i] = False
             self.condition.notifyAll()
             return self.prediction[i,0]
+
+    def singleModelPredictor(self,m):
+        class SingleModelPredictor(Predictor):
+            
+            def __init__(self,modelPredictor,m):
+                super().__init__(modelPredictor.boardSize)
+                self.modelPredictor = modelPredictor
+                self.m = m
+                
+            def predict(self,board):
+                return self.modelPredictor.predict(board,self.m)
+        return SingleModelPredictor(self,m)
     
     def __enter__(self):
         return self
@@ -526,9 +540,8 @@ def successRatioAgainstVoid(boardSize, modelFile, n = 1000, e = 3):
         successRatio(predictor,VoidPredictor(boardSize),n,e)
 
 def successRatioAgainstOther(boardSize, modelFile, modelFileOther, n = 1000, e = 3):
-    with ModelPredictor(boardSize,modelFile) as predictor:
-        with ModelPredictor(boardSize,modelFileOther) as other:
-            successRatio(predictor,other,n,e)
+    with ModelPredictor(boardSize,modelFile,modelFileOther) as predictor:
+        successRatio(predictor.singleModelPredictor(0),predictor.singleModelPredictor(1),n,e)
 
 if __name__ == '__main__':
     #heuristicTrain(7)
