@@ -46,19 +46,23 @@ class Minimax(object):
                 acc = []
                 infinites = []
                 for move,node in self.successors:
-                    v = self.successorSortKey(node)
+                    v = self.successorSortKey(node)[0]
                     if math.isclose(v,1):
                         infinites.append((move,node))
                         s += math.inf
                     else:
                         s += math.pow((1 + v)/(1 - v),self.minimax.selectionExponent)
                     acc.append(s)
+                def mnTerminalKey(w):
+                    return self.successorSortKey(w[1])
                 if infinites:
-                    return random.choice(infinites)
+                    k = max(map(mnTerminalKey,infinites))
+                    return random.choice(list(filter(lambda w:mnTerminalKey(w) == k,infinites)))
                 elif s > 0:
                     return self.successors[bisect.bisect(acc,s*random.random())]
                 else:
-                    return random.choice(self.successors)
+                    k = max(map(mnTerminalKey,self.successors))
+                    return random.choice(list(filter(lambda w:mnTerminalKey(w) == k,self.successors)))
             else:
                 return None, None
             
@@ -131,7 +135,8 @@ class Minimax(object):
                 return self.selectedSuccessor().expandLeaf()
 
         def successorSortKey(self, s):
-            return s.leafValue() * self.valueFactor
+            v = s.leafValue() * self.valueFactor
+            return (v, -s.leafDistance() * v, -len(s.bestMovesAndSuccessors())) 
 
         def computeSortedSuccessors(self):
             return sorted([s for m,s in self.successors], key = self.successorSortKey, reverse = True)
