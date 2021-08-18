@@ -216,16 +216,17 @@ class ModelPredictor(Predictor):
     def __init__(self,boardSize,*modelFiles,batchSize = multiprocessing.cpu_count(),k = 64):
         super().__init__(boardSize)
         self.modelFiles = modelFiles
+        self.batchSize = batchSize
         self.k = k
-        self.m = 0
-        self.input = np.zeros((batchSize,) + (boardSize,)*2 + (3,))
-        self.input[:,0,:,1] = 1
-        self.input[:,-1,:,1] = 1
-        self.input[:,:,0,-1] = -1
-        self.input[:,:,-1,-1] = -1
-        self.n = 0
-        self.pending = np.zeros(batchSize, dtype = bool)
-        self.ready = np.zeros(batchSize, dtype = bool)
+        self.input = np.zeros((len(modelFiles),batchSize,) + (boardSize,)*2 + (3,))
+        self.input[:,:,0,:,1] = 1
+        self.input[:,:,-1,:,1] = 1
+        self.input[:,:,:,0,-1] = -1
+        self.input[:,:,:,-1,-1] = -1
+        self.prediction = np.zeros((len(modelFiles),batchSize,1))
+        self.n = [0] * len(modelFiles)
+        self.pending = np.zeros((len(modelFiles),batchSize), dtype = bool)
+        self.ready = np.zeros((len(modelFiles),batchSize), dtype = bool)
         self.thread = Thread(target = self.run, name = "ModelPredictor", daemon = True)
         self.condition = Condition()
         self.stop = False
@@ -250,29 +251,30 @@ class ModelPredictor(Predictor):
             tf.get_logger().setLevel('INFO')            
             models = list(map(load_model,self.modelFiles))
             while True:
-                while not self.stop and (self.n <= 0 or self.ready.any()):
+                while not self.stop and (all(map(lambda n_:n_<=0,self.n)) or self.ready.any()):
                     self.condition.wait()
                 if self.stop:
                     break
-                self.prediction = self.postPredict(models[self.m].predict(self.input[:self.n]))
-                self.ready[:self.n] = True
-                self.n = 0
-                self.condition.notifyAll()
+                for m,model in enumerate(models):
+                    if self.n[m] > 0:
+                        self.prediction[m,:self.n[m]] = self.postPredict(model.predict(self.input[m,:self.n[m]]))
+                        self.ready[m,:self.n[m]] = True
+                        self.n[m] = 0
+                        self.condition.notifyAll()
         
     def predict(self,board,m = 0):
         with self.condition:
-            while self.n >= len(self.input) or self.ready[self.n]:
+            while self.n[m] >= self.batchSize or self.ready[m,self.n[m]]:
                 self.condition.wait()
-            i = self.n
-            self.m = m
-            self.input[i,:,:,0] = board.cells
-            self.n += 1
+            i = self.n[m]
+            self.input[m,i,:,:,0] = board.cells
+            self.n[m] += 1
             self.condition.notifyAll()
-            while not self.ready[i]:
+            while not self.ready[m,i]:
                 self.condition.wait()
-            self.ready[i] = False
+            self.ready[m,i] = False
             self.condition.notifyAll()
-            return self.prediction[i,0]
+            return self.prediction[m,i,0]
 
     def singleModelPredictor(self,m):
         class SingleModelPredictor(Predictor):
