@@ -33,8 +33,18 @@ class BoardWidget(QWidget):
         self.board = board
         self.history = []
         self.historyPointer = 0
-        self.minimax = Minimax(heuristic = ModelPredictor(board.size,"model7.h5").predict) if board.size == 7 else Minimax()
+        self.modelPredictor = None
+        if board.size == 7:
+            self.modelPredictor = ModelPredictor(board.size,"model7.h5")
+        elif board.size == 5:
+            self.modelPredictor = ModelPredictor(board.size,"model5.h5")
+        self.minimax = Minimax(heuristic = self.modelPredictor.predict if self.modelPredictor else None)
         self.minimaxWorker = None
+        
+    def close(self):
+        if self.modelPredictor:
+            self.modelPredictor.close()
+        return super().close()
         
     def working(self):
         return self.minimaxWorker is not None
@@ -216,6 +226,7 @@ class BoardWidget(QWidget):
             self.thread.finished.connect(self.thread.deleteLater)
             self.finished.connect(self.thread.quit)
             self.aborted_ = False
+            self.moveWhenFinished = True
         
         def start(self):
             self.thread.start()
@@ -253,14 +264,16 @@ class BoardWidget(QWidget):
     def stopMinimax(self):
         if self.minimaxWorker:
             self.minimaxWorker.abort()
-            move = self.minimax.selectedMove()
-            if move:
-                self.move(move)
+       
+    def abortMinimax(self):     
+        if self.minimaxWorker:
+            self.minimaxWorker.moveWhenFinished = False
+            self.minimaxWorker.abort()
         
     def finishedMinimax(self):
         if self.minimaxWorker:
             self.minimaxWorker.wait()
-            if not self.minimaxWorker.aborted():        
+            if self.minimaxWorker.moveWhenFinished:        
                 move = self.minimax.selectedMove()
                 if move:
                     self.move(move)
@@ -276,6 +289,7 @@ class BoardWidget(QWidget):
                 self.startMinimax()
         elif event.key() == Qt.Key_Escape:
             if self.minimaxWorker:
+                self.minimaxWorker.moveWhenFinished = False
                 self.minimaxWorker.abort()
                 
     def pruneMinimax(self):
@@ -395,6 +409,7 @@ class PresHexMainWindow(QMainWindow):
             if boardWidget.board.size == self.preferences.boardSize:
                 return
             else:
+                boardWidget.close()
                 boardWidget.deleteLater()
         self.setCentralWidget(BoardWidget(self,Board(size = self.preferences.boardSize)))
         

@@ -177,10 +177,10 @@ class Minimax(object):
                     s.trace(indent = indent + 8, rank = r, file = file)
             
     
-    def __init__(self,board = None, heuristic = lambda board:0, selectionExponent = 3):
+    def __init__(self,board = None, heuristic = None, selectionExponent = 3):
         self.nodes = {}
         self.boardsByMoves = []
-        self.heuristic = heuristic
+        self.heuristic = heuristic if heuristic is not None else lambda board:0
         self.selectionExponent = selectionExponent
         self.pruneDeque = deque()
         self.root = None
