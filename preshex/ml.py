@@ -149,13 +149,14 @@ class Predictor(ABC):
             return random.choice(movedBoards)
                     
         
-    def successRatioAttack(self,other,n = 1000, e = 1):
+    def successRatio(self,other,turn,n = 1000, e = 1):
         predictorSelf = self
         
         class State(object):
             
-            def __init__(self):
+            def __init__(self,turn):
                 self.lock = RLock()
+                self.turn = turn
                 self.count = 0
                 self.wins = 0
                 
@@ -167,44 +168,67 @@ class Predictor(ABC):
                         self.trace()
             
             def trace(self):
-                print(f"-----> count:{self.count}\twins:{self.wins}\tratio:{self.ratio()}",file = sys.stderr)
+                with self.lock:
+                    print(f"-----> turn:{turn}\tcount:{self.count}\twins:{self.wins}\tratio:{self.ratio()}",file = sys.stderr)
             
             def ratio(self):
-                return self.wins/self.count
+                with self.lock:
+                    return self.wins/self.count
                     
                 
-        state = State()  
-        class SuccessRatioAttackThread(Thread):
+        state = State(turn)  
+        class SuccessRatioThread(Thread):
             def __init__(self):
-                super().__init__(name = "successRatioAttack")
+                super().__init__(name = "successRatio")
             
             def run(self):
                 while True:
                     board = Board(predictorSelf.boardSize)
                     while not board.winner:
-                        for predictor in [predictorSelf,other]:
+                        for predictor in [predictorSelf,other][::turn]:
                             if board.winner:
                                 break
                             board = predictor.fastMove(board, e)
-                    state.score(board.winner > 0)
+                    state.score(board.winner * turn > 0)
                     if state.count >= n:
                         break
 
-
         threads = []
         for i in range(multiprocessing.cpu_count()):
-            thread = SuccessRatioAttackThread()
+            thread = SuccessRatioThread()
             thread.start()
             threads.append(thread)
         for thread in threads:
             thread.join()
+        state.trace()
         return state.ratio()
+
+    def successRatioAttack(self,other, n = 1000, e = 1):
+        return self.successRatio(other,1,n,e)
     
-    def successRatioDefend(self,other,n = 1000, e = 1):
-        return 1 - other.successRatioAttack(self,n,e)
+    def successRatioDefend(self,other, n = 1000, e = 1):
+        return self.successRatio(other,-1,n,e)
     
     def successRatioAverage(self,other,n = 1000, e = 1):
-        return (self.successRatioAttack(other,n,e) + self.successRatioDefend(other,n,e))/2
+        
+        class successRatioThread(Thread):
+            
+            def __init__(self,name,function):
+                super().__init__(name = name)
+                self.function = function
+                self.result = None
+
+            def run(self):
+                self.result = self.function(other,n,e)
+        
+        attackThread = successRatioThread("successRatioAttack", self.successRatioAttack)
+        attackThread.start()
+        defendThread = successRatioThread("successRatioDefend", self.successRatioDefend)
+        defendThread.start()
+        attackThread.join()
+        defendThread.join()
+        
+        return (attackThread.result + defendThread.result)/2
 
 class VoidPredictor(Predictor):
     
@@ -561,7 +585,7 @@ if __name__ == '__main__':
     #checkAccuracy(7,"model7.h5")
     #generateSaveModel(7,"model7_01.h5")
     #successRatioAgainstVoid(7,"model7_old.h5")
-    successRatioAgainstOther(7,"model7.h5","model7_old.h5")
+    successRatioAgainstOther(7,"model7.h5","model7_old.h5",n=50)
 
     
     
