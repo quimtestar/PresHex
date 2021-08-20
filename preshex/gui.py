@@ -19,7 +19,33 @@ from pypref import SinglePreferences
 import os
 import threading
 from ml import ModelPredictor
+from bisect import bisect_left
 
+
+class PredictorFactory(object):
+    
+    _instance = None
+    
+    @classmethod
+    def instance(cls):
+        if cls._instance is None:
+            cls._instance = PredictorFactory()
+        return cls._instance
+    
+    def __init__(self):
+        super().__init__()
+        self.modelFilesDict = {
+                3: "model3.h5",
+                5: "model5.h5",
+                7: "model7.h5",
+            }
+        self.modelFilesSizes = sorted(self.modelFilesDict.keys())
+        
+    def predictor(self,size):
+        k = min(bisect_left(self.modelFilesSizes,size),len(self.modelFilesSizes)-1)
+        size = self.modelFilesSizes[k]
+        return ModelPredictor(size,self.modelFilesDict[size])
+                                            
 
 class BoardWidget(QWidget):
         
@@ -33,11 +59,7 @@ class BoardWidget(QWidget):
         self.board = board
         self.history = []
         self.historyPointer = 0
-        self.modelPredictor = None
-        if board.size == 7:
-            self.modelPredictor = ModelPredictor(board.size,"model7.h5")
-        elif board.size == 5:
-            self.modelPredictor = ModelPredictor(board.size,"model5.h5")
+        self.modelPredictor = PredictorFactory.instance().predictor(board.size)
         self.minimax = Minimax(heuristic = self.modelPredictor.predict if self.modelPredictor else None)
         self.minimaxWorker = None
         
