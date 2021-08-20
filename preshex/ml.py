@@ -239,6 +239,7 @@ class ModelPredictor(Predictor):
     
     def __init__(self,boardSize,*modelFiles,batchSize = multiprocessing.cpu_count(),k = 64):
         super().__init__(boardSize)
+        self.filler = np.fromfunction(lambda i,j:np.logical_xor(i>j,i+j<boardSize).astype(int)-np.logical_xor(i<j,i+j<boardSize).astype(int),(boardSize,)*2,dtype=int)
         self.modelFiles = modelFiles
         self.batchSize = batchSize
         self.k = k
@@ -291,7 +292,19 @@ class ModelPredictor(Predictor):
             while self.n[m] >= self.batchSize or self.ready[m,self.n[m]]:
                 self.condition.wait()
             i = self.n[m]
-            self.input[m,i,:,:,0] = board.cells
+            if board.size == self.boardSize:
+                self.input[m,i,:,:,0] = board.cells
+            elif board.size < self.boardSize:
+                self.input[m,i,:,:,0] = self.filler
+                k0 = (self.boardSize - board.size + 1)//2
+                k1 = (self.boardSize + board.size + 1)//2
+                self.input[m,i,k0:k1,k0:k1,0] = board.cells
+            elif board.size > self.boardSize:
+                k0 = (board.size - self.boardSize + 1)//2
+                k1 = (board.size + self.boardSize + 1)//2
+                self.input[m,i,:,:,0] = board.cells[k0:k1,k0:k1]
+            else:
+                self.input[m,i,:,:,0] = 0
             self.n[m] += 1
             self.condition.notifyAll()
             while not self.ready[m,i]:
