@@ -72,20 +72,15 @@ def makeHeuristicData(boardSize, size, processes = multiprocessing.cpu_count()):
             y.append(y_)
         return np.concatenate(x), np.concatenate(y)
         
-def generateModel(boardSize):
+def generateModel(boardSize,filters = 64,extra = 2):
     model = Sequential()
     model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
-    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
-    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
-    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
-    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
-    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
-    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
-    model.add(Conv2D(filters = 64,kernel_size = (3,3),activation = "tanh"))
-    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
-    #model.add(Conv2D(filters = 64,kernel_size = (3,3),padding = "same", activation = "tanh"))
+    for i in range((boardSize-1)//2):
+        model.add(Conv2D(filters = filters,kernel_size = (3,3),activation = "tanh"))
+        for j in range(extra):
+            model.add(Conv2D(filters = filters,kernel_size = (3,3),padding = "same", activation = "tanh"))
     model.add(Flatten())
-    model.add(Dense(units = 16, activation = "tanh"))
+    model.add(Dense(units = 2**(math.floor(math.log(filters,2))//2+1), activation = "tanh"))
     model.add(Dense(units = 1, activation = "tanh"))
     model.compile(loss = "mean_squared_error", optimizer = "SGD")
     return model
@@ -319,6 +314,8 @@ class ModelPredictor(Predictor):
         self.close()
         
 def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
+    if predictor is None:
+        predictor = VoidPredictor(boardSize)
     board = Board(boardSize)
     game = []
     while board:
@@ -382,7 +379,7 @@ def generateMinimaxTrainData(boardSize,  modelFile = None, targetFrom = None, ta
         with ModelPredictor(boardSize,modelFile) as predictor:
             return generateMinimaxTrainDataPredictor(boardSize, predictor, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
     else:
-        return generateMinimaxTrainDataPredictor(boardSize, size = size, targetFrom = targetFrom, targetAlpha = targetAlpha, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
+        return generateMinimaxTrainDataPredictor(boardSize, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
 
 def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
     cells, values = generateMinimaxTrainData(boardSize,modelFile,targetFrom,targetAlpha,size,deltaSize,selectionExponent, terminal)
@@ -533,6 +530,38 @@ def modelAlter(modelFile):
     model = load_model(modelFile)
     pass
     model.save(modelFile)
+
+def modelWeightsFromBase(modelFileBase,modelFile):
+    modelBase = load_model(modelFileBase)
+    model = load_model(modelFile)
+    for i,layer in enumerate(model.layers):
+        """
+        if i in (4,8,12):
+            w = layer.get_weights()
+            w[0][:] = 0
+            w[0][1,1] = np.identity(w[0].shape[2])
+            w[1][:] = 0
+            layer.set_weights(w)
+        else:
+            layer.set_weights(modelBase.layers[i - (i > 4) - (i > 8) - (i > 12)].get_weights())
+        """
+        w0 = modelBase.layers[i].get_weights()
+        w = layer.get_weights()
+        for a0,a in zip(w0,w):
+            #a[:] = 0
+            s = tuple(slice(0,n) for n in a0.shape)
+            a[s] = a0
+        layer.set_weights(w)
+    model.save(modelFile)
+
+def modelWeightsFromPrevious(modelFilePrevious,modelFile):
+    modelPrevious = load_model(modelFilePrevious)
+    model = load_model(modelFile)
+    for i,layer in enumerate(model.layers):
+        if i not in (5,6):
+            layer.set_weights(modelPrevious.layers[i - (i >= 5) * 2].get_weights())
+    model.save(modelFile)
+
     
 def checkAccuracy(boardSize,modelFile):
     minimax = terminalSmallMinimax(boardSize, initialSize = 2**20, deltaSize = 0)
@@ -552,8 +581,8 @@ def checkAccuracy(boardSize,modelFile):
     error = np.mean(errors**2)
     pass
 
-def generateSaveModel(boardSize,modelFile):
-    model = generateModel(boardSize)
+def generateSaveModel(boardSize,filters,extra,modelFile):
+    model = generateModel(boardSize,filters,extra)
     model.summary()
     model.save(modelFile)
 
@@ -576,7 +605,7 @@ if __name__ == '__main__':
     #minimaxTrain("data7.npz","model7.h5",fraction = 1)
     #minimaxTrain("data7_01.npz","model7_01.h5",fraction = 1)
     #modelDesign(7)
-    #saveMinimaxTrainData(7,"data7.npz","model7.h5",targetFrom = 0.5, targetAlpha = math.log(2)/0.20, deltaSize = 2**12)
+    #saveMinimaxTrainData(7,"data7.npz","model7.h5",targetFrom = 0.5, targetAlpha = math.log(2)/0.40, size = 2**23, deltaSize = 2**12)
     #saveMinimaxTrainData(7,"data7_01.npz","model7_01.h5",targetFrom = None, targetAlpha = math.log(2)/0.10, deltaSize = 2**14)
     #saveRootMinimaxTrainData(7,"data7_root.npz","model7.h5", size = 2**22, randomization = 1)
     #modelDesign3(3,"model3_new.h5")
@@ -584,11 +613,51 @@ if __name__ == '__main__':
     #minimaxTrain("data3.npz","model3_new.h5",validation=0)
     #checkAccuracy(7,"model7.h5")
     #generateSaveModel(7,"model7_01.h5")
-    #successRatioAgainstVoid(7,"model7_old.h5")
-    successRatioAgainstOther(7,"model7.h5","model7_old.h5",n=50)
+    #successRatioAgainstVoid(7,"model7.h5")
+    #successRatioAgainstOther(7,"model7.h5","model7_old.h5")
+    
+    #saveMinimaxTrainData(3,"data3.npz",size = 2**16, deltaSize = 2**16, terminal = True)
+    #generateSaveModel(3,16,0,"model3.h5")
+    #minimaxTrain("data3.npz","model3.h5",validation = 0)
+    #successRatioAgainstVoid(3,"model3.h5")
 
+    #saveMinimaxTrainData(5,"data5.npz", deltaSize = 2**14, terminal = True)
+    #saveMinimaxTrainData(5,"data5.npz","model5_new.h5",targetFrom = 0.5, targetAlpha = math.log(2)/0.2, size = 2**22, deltaSize = 2**14)
+    #generateSaveModel(5,16,0,"model5.h5")
+    #minimaxTrain("data5.npz","model5.h5")
+    #successRatioAgainstVoid(5,"model5.h5")
+    #successRatioAgainstOther(5,"model5.h5","model5_old.h5")
+    #generateSaveModel(5,24,1,"model5_new.h5")
+    #modelWeightsFromBase("model5.h5","model5_new.h5")
+    #minimaxTrain("data5.npz","model5_new.h5")
+    #modelAlter("model5_new.h5")
+    #successRatioAgainstOther(5,"model5_new.h5","model5.h5")
     
     
+    #generateSaveModel(7,24,2,"model7_.h5")
+    #modelWeightsFromPrevious("model5.h5","model7_.h5")
+    saveMinimaxTrainData(7,"data7.npz","model7.h5",targetFrom = 0.5, targetAlpha = math.log(2)/1, size = 2**22, deltaSize = 2**12)
+    #minimaxTrain("data7.npz","model7.h5")
+    #successRatioAgainstOther(7,"model7.h5","model7_old.h5")
+    #successRatioAgainstVoid(7,"model7.h5")
+    #generateSaveModel(7,48,2,"model7_new.h5")
+    #modelWeightsFromBase("model7.h5","model7_new.h5")
+    #minimaxTrain("data7.npz","model7_new.h5")
+    #successRatioAgainstOther(7,"model7_new.h5","model7.h5")
+    #generateSaveModel(7,32,3,"model7_new2.h5")
+    #modelWeightsFromBase("model7.h5","model7_new2.h5")
+    #minimaxTrain("data7.npz","model7_new2.h5")
+    #generateSaveModel(7,40,2,"model7_new3.h5")
+    #modelWeightsFromBase("model7.h5","model7_new3.h5")
+    #minimaxTrain("data7.npz","model7_new3.h5")
+
+    #successRatioAgainstOther(7,"model7_new.h5","model7.h5")
+    #successRatioAgainstOther(7,"model7_new2.h5","model7.h5")
+    #successRatioAgainstOther(7,"model7_new3.h5","model7.h5")
+    #successRatioAgainstOther(7,"model7_new2.h5","model7_new.h5")
+    #successRatioAgainstOther(7,"model7_new3.h5","model7_new.h5")
+    #successRatioAgainstOther(7,"model7_new3.h5","model7_new2.h5")
+
     
     
     
