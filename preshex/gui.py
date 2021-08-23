@@ -4,7 +4,7 @@ from PyQt5.QtCore import (
                 )
 from PyQt5.QtWidgets import (
                     QApplication, QWidget, QMainWindow, QMenu, QDialog, QLineEdit,
-                    QFormLayout, QVBoxLayout, QDialogButtonBox, QSpinBox
+                    QFormLayout, QVBoxLayout, QDialogButtonBox, QSpinBox, QMessageBox
                 )
 from PyQt5.QtGui import (
                     QPainter, QColor, QPolygonF, QIntValidator, QIcon, QKeySequence,
@@ -235,6 +235,7 @@ class BoardWidget(QWidget):
         
         finished = pyqtSignal()
         status = pyqtSignal(str)
+        exception = pyqtSignal(Exception)
         
         def __init__(self,minimax,size,margin):
             super().__init__()
@@ -248,7 +249,6 @@ class BoardWidget(QWidget):
             self.thread.finished.connect(self.thread.deleteLater)
             self.finished.connect(self.thread.quit)
             self.aborted_ = False
-            self.moveWhenFinished = True
         
         def start(self):
             self.thread.start()
@@ -261,6 +261,9 @@ class BoardWidget(QWidget):
             threading.current_thread().setName("Minimax")
             try:
                 self.minimax.expand(self.size, self.margin, status = self.statusEmit, aborted = self.aborted)
+            except Exception as e:
+                self.abort()
+                self.exception.emit(e)
             finally:
                 self.finished.emit()
         
@@ -279,6 +282,7 @@ class BoardWidget(QWidget):
             self.minimaxWorker = self.MinimaxWorker(self.minimax,self.preferences.minimaxSize,self.preferences.minimaxMargin)
             self.minimaxWorker.status.connect(self.presHexMainWindow.status)
             self.minimaxWorker.finished.connect(self.finishedMinimax)
+            self.minimaxWorker.exception.connect(self.exceptionMinimax)
             self.minimaxWorker.start()
             self.presHexMainWindow.workingStatusChanged(True)
             QApplication.instance().setOverrideCursor(Qt.WaitCursor)
@@ -289,19 +293,21 @@ class BoardWidget(QWidget):
        
     def abortMinimax(self):     
         if self.minimaxWorker:
-            self.minimaxWorker.moveWhenFinished = False
             self.minimaxWorker.abort()
         
     def finishedMinimax(self):
         if self.minimaxWorker:
             self.minimaxWorker.wait()
-            if self.minimaxWorker.moveWhenFinished:        
+            if not self.minimaxWorker.aborted():        
                 move = self.minimax.selectedMove()
                 if move:
                     self.move(move)
             self.minimaxWorker = None
             self.presHexMainWindow.workingStatusChanged(False)
-            QApplication.instance().restoreOverrideCursor()         
+            QApplication.instance().restoreOverrideCursor()
+        
+    def exceptionMinimax(self,exception):
+        QMessageBox.critical(self,"Error",str(exception))
         
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Space:
