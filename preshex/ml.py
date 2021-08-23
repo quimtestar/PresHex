@@ -14,6 +14,7 @@ import hashlib
 import time
 import math
 from abc import ABC, abstractmethod
+import traceback
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -249,6 +250,7 @@ class ModelPredictor(Predictor):
         self.ready = np.zeros((len(modelFiles),batchSize), dtype = bool)
         self.thread = Thread(target = self.run, name = "ModelPredictor", daemon = True)
         self.condition = Condition()
+        self.exception = None
         self.stop = False
         self.thread.start()
         
@@ -268,24 +270,31 @@ class ModelPredictor(Predictor):
             config = tf.ConfigProto()
             config.gpu_options.allow_growth = True
             set_session(tf.Session(config=config))
-            tf.get_logger().setLevel('INFO')            
-            models = list(map(load_model,self.modelFiles))
-            while True:
-                while not self.stop and (all(map(lambda n_:n_<=0,self.n)) or self.ready.any()):
-                    self.condition.wait()
-                if self.stop:
-                    break
-                for m,model in enumerate(models):
-                    if self.n[m] > 0:
-                        self.prediction[m,:self.n[m]] = self.postPredict(model.predict(self.input[m,:self.n[m]]))
-                        self.ready[m,:self.n[m]] = True
-                        self.n[m] = 0
-                        self.condition.notifyAll()
+            tf.get_logger().setLevel('INFO')
+            try:
+                models = list(map(load_model,self.modelFiles))
+                while True:
+                    while not self.stop and (all(map(lambda n_:n_<=0,self.n)) or self.ready.any()):
+                        self.condition.wait()
+                    if self.stop:
+                        break
+                    for m,model in enumerate(models):
+                        if self.n[m] > 0:
+                            self.prediction[m,:self.n[m]] = self.postPredict(model.predict(self.input[m,:self.n[m]]))
+                            self.ready[m,:self.n[m]] = True
+                            self.n[m] = 0
+                            self.condition.notifyAll()
+            except Exception as e:
+                traceback.print_exc()
+                self.exception = e
+                self.condition.notifyAll()                
         
     def predict(self,board,m = 0):
         with self.condition:
-            while self.n[m] >= self.batchSize or self.ready[m,self.n[m]]:
+            while self.exception is None and (self.n[m] >= self.batchSize or self.ready[m,self.n[m]]):
                 self.condition.wait()
+            if self.exception:
+                raise self.exception
             i = self.n[m]
             if board.size == self.boardSize:
                 self.input[m,i,:,:,0] = board.cells
@@ -302,8 +311,10 @@ class ModelPredictor(Predictor):
                 self.input[m,i,:,:,0] = 0
             self.n[m] += 1
             self.condition.notifyAll()
-            while not self.ready[m,i]:
+            while self.exception is None and not self.ready[m,i]:
                 self.condition.wait()
+            if self.exception:
+                raise self.exception
             self.ready[m,i] = False
             self.condition.notifyAll()
             return self.prediction[m,i,0]
