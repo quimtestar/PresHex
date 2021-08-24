@@ -13,7 +13,7 @@ from PyQt5.QtGui import (
 import math
 import numpy as np
 import sys
-from board import Board,Move
+from board import Board, Move, MoveTree
 from minimax import Minimax
 from pypref import SinglePreferences
 import os
@@ -59,6 +59,8 @@ class BoardWidget(QWidget):
         self.board = board
         self.history = []
         self.historyPointer = 0
+        self.moveTree = MoveTree(board)
+        self.moveTreeNode = self.moveTree.node
         self.modelPredictor = PredictorFactory.instance().predictor(board.size)
         self.minimax = Minimax(heuristic = self.modelPredictor.predict if self.modelPredictor else None)
         self.minimaxWorker = None
@@ -66,6 +68,7 @@ class BoardWidget(QWidget):
     def close(self):
         if self.modelPredictor:
             self.modelPredictor.close()
+        self.moveTree.save()
         return super().close()
         
     def working(self):
@@ -168,16 +171,19 @@ class BoardWidget(QWidget):
         self.history = self.history[:self.historyPointer]
         self.history.append(move)
         self.historyPointer += 1
+        self.moveTreeNode = self.moveTreeNode.child(move)
         self.update()
         
     def moveBack(self):
         if self.historyPointer > 0:
             self.historyPointer -= 1
             self.board.unmove(self.history[self.historyPointer])
+            self.moveTreeNode = self.moveTreeNode.parent
             self.update()
 
     def moveForward(self):
         if self.historyPointer < len(self.history):
+            self.moveTreeNode = self.moveTreeNode.child(self.history[self.historyPointer])
             self.board.move(self.history[self.historyPointer])
             self.historyPointer += 1
             self.update()
@@ -319,6 +325,8 @@ class BoardWidget(QWidget):
             if self.minimaxWorker:
                 self.minimaxWorker.moveWhenFinished = False
                 self.minimaxWorker.abort()
+        elif event.key() == Qt.Key_F7:
+            self.presHexMainWindow.updateBoardSize(force = True)
                 
     def pruneMinimax(self):
         try:
@@ -340,9 +348,8 @@ class PresHexPreferences(SinglePreferences):
     def __init__(self):
         super().__init__(directory = os.path.join(os.path.expanduser("~"),".config/PresHex"))
         self.boardSize = self.preferences.get("boardSize",7)
-        self.minimaxSize = self.preferences.get("minimaxSize",2**20)
-        self.minimaxMargin = self.preferences.get("minimaxMargin",2**10)
-        
+        self.minimaxSize = self.preferences.get("minimaxSize",2**12)
+        self.minimaxMargin = self.preferences.get("minimaxMargin",2**11)
         
     def dict(self):
         return {
@@ -431,10 +438,10 @@ class PresHexMainWindow(QMainWindow):
         if isinstance(centralWidget,BoardWidget):
             return centralWidget
         
-    def updateBoardSize(self):
+    def updateBoardSize(self, force = False):
         boardWidget = self.boardWidget()
         if boardWidget:
-            if boardWidget.board.size == self.preferences.boardSize:
+            if not force and boardWidget.board.size == self.preferences.boardSize:
                 return
             else:
                 boardWidget.close()
@@ -481,7 +488,6 @@ class PresHexMainWindow(QMainWindow):
         boardWidget = self.boardWidget()
         if boardWidget:
             boardWidget.purgeMinimax()
-        
 
     def status(self,s):
          self.statusBar().showMessage(s)
@@ -489,6 +495,12 @@ class PresHexMainWindow(QMainWindow):
                 
     def exit(self):
         self.close()
+        
+    def closeEvent(self, event):
+        boardWidget = self.boardWidget()
+        if boardWidget:
+            boardWidget.close()
+        super().closeEvent(event)
 
 
 def presHexIcon():

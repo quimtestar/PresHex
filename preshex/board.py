@@ -2,6 +2,10 @@ import numpy as np
 from collections import deque
 import sys
 import itertools
+import pickle
+import os
+from datetime import datetime
+import random
 
 
 class Move(object):
@@ -297,3 +301,84 @@ class Board(object):
             print(file = file)
         print(" " * indent + "-" * 3 * (2 * self.size - 1), file = file)
 
+class MoveTree(object):
+
+    class Node(object):
+        
+        def __init__(self, parent = None):
+            self.parent = parent
+            self.children = {}
+            
+        def child(self,move):
+            if move not in self.children:
+                self.children[move] = self.__class__(self)
+            return self.children[move]
+        
+        def postOrder(self,board):
+            itemList = list(self.children.items())
+            random.shuffle(itemList)
+            for move,node in itemList:
+                for board_, node_ in node.postOrder(board.moveOnCopy(move)):
+                    yield board_, node_
+            yield board, self
+            
+        def trace(self,prefix = "",file = sys.stdout):
+            if self.children:
+                if len(self.children) > 1:
+                    prefix1 = " " * len(prefix)
+                for i,(move,node) in enumerate(self.children.items()):
+                    if i == 0:
+                        node.trace(prefix + str(move) + " ", file)
+                    else:
+                        node.trace(prefix1 + str(move) + " ", file)
+            else:
+                print(prefix,file=file)
+
+    rootDirectory = os.path.join(os.path.expanduser("~"),".PresHex/moveTrees")
+    os.makedirs(rootDirectory,exist_ok = True)
+    
+    def __init__(self,board):
+        self.board = board.copy()
+        self.node = self.Node()
+        
+    def postOrder(self):
+        for board,node in self.node.postOrder(self.board):
+            yield board,node
+        
+    def trace(self, file = sys.stdout):
+        self.board.trace(file = file)
+        self.node.trace(file = file)
+    
+    @classmethod
+    def saveDirectory(cls,size):
+        dir = os.path.join(cls.rootDirectory,f"{size}")
+        os.makedirs(dir,exist_ok = True)
+        return dir
+        
+    def saveFileName(self):
+        return os.path.join(self.saveDirectory(self.board.size),f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{random.randrange(10**8):08d}.pickle")
+    
+    def save(self):
+        with open(self.saveFileName(), "wb") as f:
+            pickle.dump(self,f)
+            
+    @classmethod
+    def load(cls,fileName):
+        with open(fileName,"rb") as f:
+            obj = pickle.load(f)
+            if isinstance(obj, cls):
+                return obj
+    
+    @classmethod
+    def loadAll(cls,size,delete = False):
+        dir = cls.saveDirectory(size)
+        for name in os.listdir(dir):
+            try:
+                fileName = os.path.join(dir,name)
+                moveTree = cls.load(fileName)
+                if moveTree:
+                    if delete:
+                        os.remove(fileName)
+                    yield moveTree
+            except:
+                pass

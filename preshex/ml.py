@@ -5,7 +5,7 @@ from keras.models import Sequential, load_model
 from keras.layers import Conv2D, Dense, Flatten, Reshape
 from keras.callbacks import Callback, ModelCheckpoint, EarlyStopping
 from minimax import Minimax
-from board import Board, Move
+from board import Board, Move, MoveTree
 import bisect
 from collections import deque
 import sys
@@ -337,10 +337,9 @@ class ModelPredictor(Predictor):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
         
-def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
+def terminalSmallMinimax(board, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
     if predictor is None:
-        predictor = VoidPredictor(boardSize)
-    board = Board(boardSize)
+        predictor = VoidPredictor(board.size)
     game = []
     while board:
         game.append(board)
@@ -357,14 +356,52 @@ def terminalSmallMinimax(boardSize, predictor = None,  target = None, initialSiz
     minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())
     return minimax
 
+def terminalSmallMinimaxesFromMoveTree(moveTree, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
+    if predictor is None:
+        predictor = VoidPredictor(boardSize)
+    minimax = Minimax(heuristic = predictor.predict) if predictor else Minimax()
+    keepOn = False
+    for board,node in moveTree.postOrder():
+        if not node.children:
+            if keepOn:
+                yield minimax
+            keepOn = True
+            game = []
+            while board:
+                game.append(board)
+                board = predictor.fastMove(board, selectionExponent)
+            size = initialSize
+            for board in game[::-1]:
+                minimax.setRootBoard(board)
+                reached = minimax.expand(size,1024,target = target,statusInterval = 10 * multiprocessing.cpu_count())
+                if not reached:
+                    keepOn = False
+                    yield minimax
+                size += deltaSize
+        else:
+            if keepOn:
+                minimax.setRootBoard(board)
+                reached = minimax.expand(size,1024,target = target,statusInterval = 10 * multiprocessing.cpu_count())
+                if not reached:
+                    keepOn = False
+                    yield minimax
+                size += deltaSize
+    if keepOn:
+        minimax.selectionExponent = selectionExponent
+        minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())        
+        yield minimax
+
+
 def hashCells(cells):
     hash = hashlib.md5()
     hash.update(cells.tobytes())
     digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
     return int.from_bytes(digest, byteorder = "big", signed = True)
     
-def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
+def generateMinimaxTrainDataPredictor(boardSize, predictor = None, useMoveTrees = False, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
     lock = RLock()
+    if useMoveTrees:
+        moveTreesIterator = iter(MoveTree.loadAll(boardSize,delete = False)) #XXX 
     cells = []
     values = []
     class TerminalSmallMinimaxThread(Thread):
@@ -373,6 +410,13 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = 
         
         def run(self):
             while True:
+                moveTree = None
+                if useMoveTrees:
+                    with lock:
+                        try:
+                            moveTree = next(moveTreesIterator)
+                        except StopIteration:
+                            pass
                 if targetFrom is None:
                     target = None
                 elif targetAlpha == 0:
@@ -380,12 +424,17 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = 
                 else:
                     x = random.random()
                     target = 1/targetAlpha * math.log(x * math.exp(targetAlpha) + (1 - x) * math.exp(targetAlpha * targetFrom))
-                minimax = terminalSmallMinimax(boardSize,predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent)
+                if moveTree is None:
+                    minimaxes = [terminalSmallMinimax(Board(boardSize),predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent)]
+                else:
+                    minimaxes = terminalSmallMinimaxesFromMoveTree(moveTree,predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent)
+                for minimax in minimaxes:
+                    with lock:
+                        for board,value in minimax.collectLeafValues(terminal = terminal):
+                            cells.append(board.cells)
+                            values.append(value)
+                        print(f"----> data size:{len(cells)}",file = sys.stderr)
                 with lock:
-                    for board,value in minimax.collectLeafValues(terminal = terminal):
-                        cells.append(board.cells)
-                        values.append(value)
-                    print(f"----> data size:{len(cells)}",file = sys.stderr)
                     if len(cells) >= size:
                         break
     threads = []
@@ -398,15 +447,15 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, targetFrom = 
     return np.array(cells), np.array(values)
 
 
-def generateMinimaxTrainData(boardSize,  modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
+def generateMinimaxTrainData(boardSize,  modelFile = None, useMoveTrees = False, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
     if modelFile:
         with ModelPredictor(boardSize,modelFile) as predictor:
-            return generateMinimaxTrainDataPredictor(boardSize, predictor, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
+            return generateMinimaxTrainDataPredictor(boardSize, predictor, useMoveTrees = useMoveTrees, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
     else:
-        return generateMinimaxTrainDataPredictor(boardSize, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
+        return generateMinimaxTrainDataPredictor(boardSize, useMoveTrees = useMoveTrees, targetFrom = targetFrom, targetAlpha = targetAlpha, size = size, deltaSize = deltaSize, selectionExponent = selectionExponent, terminal = terminal)
 
-def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
-    cells, values = generateMinimaxTrainData(boardSize,modelFile,targetFrom,targetAlpha,size,deltaSize,selectionExponent, terminal)
+def saveMinimaxTrainData(boardSize, dataFile, modelFile = None, useMoveTrees = False, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
+    cells, values = generateMinimaxTrainData(boardSize,modelFile,useMoveTrees,targetFrom,targetAlpha,size,deltaSize,selectionExponent, terminal)
     np.savez(dataFile,cells = cells,values = values)
 
 def saveRootMinimaxTrainData(boardSize, dataFile, modelFile, size = 2**22, randomization = 1):
