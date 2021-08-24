@@ -20,6 +20,7 @@ import os
 import threading
 from ml import ModelPredictor
 from bisect import bisect_left
+import traceback
 
 
 class PredictorFactory(object):
@@ -268,6 +269,7 @@ class BoardWidget(QWidget):
             try:
                 self.minimax.expand(self.size, self.margin, status = self.statusEmit, aborted = self.aborted)
             except Exception as e:
+                traceback.print_exc()
                 self.abort()
                 self.exception.emit(e)
             finally:
