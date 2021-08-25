@@ -401,7 +401,7 @@ def hashCells(cells):
 def generateMinimaxTrainDataPredictor(boardSize, predictor = None, useMoveTrees = False, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
     lock = RLock()
     if useMoveTrees:
-        moveTreesIterator = iter(MoveTree.loadAll(boardSize,delete = False)) #XXX 
+        moveTreesIterator = iter(MoveTree.loadAll(boardSize,delete = True)) 
     cells = []
     values = []
     class TerminalSmallMinimaxThread(Thread):
