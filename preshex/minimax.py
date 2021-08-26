@@ -152,7 +152,7 @@ class Minimax(object):
             self._sortedSuccessors = None
             if self._bestLeaf:
                 for m,s in self.bestMovesAndSuccessors():
-                    if self._bestLeaf[0] == s.bestLeaf()[0]:
+                    if self._bestLeaf == (s.bestLeaf()[0], s.bestLeaf()[1] + 1):
                         return False
                 self._bestLeaf = None
                 return True
