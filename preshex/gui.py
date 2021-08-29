@@ -517,7 +517,15 @@ class PresHexApplication(QApplication):
         super().__init__(sys.argv)
         self.setApplicationName("PresHex")
         self.setWindowIcon(presHexIcon())
+
+def gui():
+    app = PresHexApplication()
+    window = PresHexMainWindow()
+    window.show()
+    app.exec_()
         
+if __name__ == '__main__':
+    gui()
         
         
         
