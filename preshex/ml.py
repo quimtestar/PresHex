@@ -24,56 +24,7 @@ set_session(tf.Session(config=config))
 tf.get_logger().setLevel('INFO')
 
 
-def heuristicDataGenerator(boardSize, batchSize = 256):
-    def cellsGenerator():
-        board = Board(boardSize)
-        while True:
-            yield board.cells, board.pendingDistanceHeuristic()
-            moves = list(board.possibleMoves())
-            if moves:
-                board.move(random.choice(moves))
-            else:
-                break
-    inputBatch = np.zeros((batchSize,) + (boardSize,)*2 + (3,))
-    inputBatch[:,0,:,1] = 1
-    inputBatch[:,-1,:,1] = 1
-    inputBatch[:,:,0,-1] = -1
-    inputBatch[:,:,-1,-1] = -1
-    
-    outputBatch = np.zeros((batchSize,1))
-    i = 0
-    while True:
-        for cells,value in cellsGenerator():
-            inputBatch[i,:,:,0] = cells
-            outputBatch[i] = value
-            i += 1
-            if i >= batchSize:
-                p = np.random.permutation(i)
-                yield inputBatch[p], outputBatch[p]
-                i = 0
-
-def makeHeuristicDataSegment(boardSize, size, segment):
-    x = []
-    y = []
-    for i,(inputBatch,outputBatch) in enumerate(heuristicDataGenerator(boardSize,256)):
-        x.append(inputBatch)
-        y.append(outputBatch)
-        print(f"s: {segment}  i: {i}")
-        if i * 256 >= size:
-            break
-    return np.concatenate(x), np.concatenate(y)
-                
-def makeHeuristicData(boardSize, size, processes = multiprocessing.cpu_count()):
-    with multiprocessing.Pool(processes) as pool:
-        x = []
-        y = []
-        for result in [pool.apply_async(makeHeuristicDataSegment, args=(boardSize, size//processes, segment)) for segment in range(processes)]:
-            x_, y_ = result.get()
-            x.append(x_)
-            y.append(y_)
-        return np.concatenate(x), np.concatenate(y)
-        
-def generateModel(boardSize,filters = 64,extra = 2):
+def generateModel(boardSize,filters,extra):
     model = Sequential()
     model.add(Reshape(input_shape = (boardSize,)*2+(3,), target_shape = (boardSize,)*2+(3,)))
     for i in range((boardSize-1)//2):
@@ -85,33 +36,6 @@ def generateModel(boardSize,filters = 64,extra = 2):
     model.add(Dense(units = 1, activation = "tanh"))
     model.compile(loss = "mean_squared_error", optimizer = "SGD")
     return model
-
-def heuristicTrain(boardSize):
-    model = generateModel(boardSize)
-    #model = load_model("model.h5")
-    model.summary()
-
-    x, y = makeHeuristicData(boardSize, 2**18)
-
-    while True:
-        history = model.fit(
-                x,
-                y,
-                batch_size = 64,
-                shuffle = True,
-                epochs = 1,
-                verbose = 2,
-                validation_split = 0.0625)
-        
-        model.save("model.h5")
-    
-    
-def heuristicTest(boardSize):
-    model = load_model("model.h5")
-    x, y = makeData(boardSize, 2**12)
-    ev = model.evaluate(x,y, verbose = 2)
-    print(ev)     
-            
 
 class Predictor(ABC):
 
@@ -337,28 +261,9 @@ class ModelPredictor(Predictor):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
         
-def terminalSmallMinimax(board, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
+def terminalSmallMinimaxes(moveTree, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
     if predictor is None:
-        predictor = VoidPredictor(board.size)
-    game = []
-    while board:
-        game.append(board)
-        board = predictor.fastMove(board, selectionExponent)
-    minimax = Minimax(heuristic = predictor.predict) if predictor else Minimax()
-    size = initialSize
-    for board in game[::-1]:
-        minimax.setRootBoard(board)
-        reached = minimax.expand(size,1024,target = target,statusInterval = 10 * multiprocessing.cpu_count())
-        if not reached:
-            break
-        size += deltaSize
-    minimax.selectionExponent = selectionExponent
-    minimax.expand(size,1024,target = None,statusInterval = 10 * multiprocessing.cpu_count())
-    return minimax
-
-def terminalSmallMinimaxesFromMoveTree(moveTree, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
-    if predictor is None:
-        predictor = VoidPredictor(boardSize)
+        predictor = VoidPredictor(moveTree.board.size)
     minimax = Minimax(heuristic = predictor.predict) if predictor else Minimax()
     keepOn = False
     for board,node in moveTree.postOrder():
@@ -392,12 +297,6 @@ def terminalSmallMinimaxesFromMoveTree(moveTree, predictor = None,  target = Non
         yield minimax
 
 
-def hashCells(cells):
-    hash = hashlib.md5()
-    hash.update(cells.tobytes())
-    digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
-    return int.from_bytes(digest, byteorder = "big", signed = True)
-    
 def generateMinimaxTrainDataPredictor(boardSize, predictor = None, useMoveTrees = False, targetFrom = None, targetAlpha = 0, size = 2**22, deltaSize = 2048, selectionExponent = 1, terminal = False):
     lock = RLock()
     if useMoveTrees:
@@ -410,13 +309,14 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, useMoveTrees 
         
         def run(self):
             while True:
-                moveTree = None
                 if useMoveTrees:
                     with lock:
                         try:
                             moveTree = next(moveTreesIterator)
                         except StopIteration:
-                            pass
+                            moveTree = MoveTree(Board(boardSize))
+                else:
+                    moveTree = MoveTree(Board(boardSize))
                 if targetFrom is None:
                     target = None
                 elif targetAlpha == 0:
@@ -424,11 +324,7 @@ def generateMinimaxTrainDataPredictor(boardSize, predictor = None, useMoveTrees 
                 else:
                     x = random.random()
                     target = 1/targetAlpha * math.log(x * math.exp(targetAlpha) + (1 - x) * math.exp(targetAlpha * targetFrom))
-                if moveTree is None:
-                    minimaxes = [terminalSmallMinimax(Board(boardSize),predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent)]
-                else:
-                    minimaxes = terminalSmallMinimaxesFromMoveTree(moveTree,predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent)
-                for minimax in minimaxes:
+                for minimax in terminalSmallMinimaxes(moveTree,predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent):
                     with lock:
                         for board,value in minimax.collectLeafValues(terminal = terminal):
                             cells.append(board.cells)
@@ -469,9 +365,32 @@ def saveRootMinimaxTrainData(boardSize, dataFile, modelFile, size = 2**22, rando
             values.append(value)
         np.savez(dataFile,cells = cells,values = values)        
 
+def hashCells(cells):
+    hash = hashlib.md5()
+    hash.update(cells.tobytes())
+    digest = hash.digest()[:(sys.maxsize.bit_length()+1)//8]
+    return int.from_bytes(digest, byteorder = "big", signed = True)
+
+def hashCellsArray(cellsArray):
+    class HashCellsThread(Thread):
+        def __init__(self,cellsPortion):
+            super().__init__(name = "hashCells")
+            self.cellsPortion = cellsPortion
+        def run(self):
+            self.hashes = np.apply_along_axis(lambda w:hashCells(w.reshape(self.cellsPortion.shape[1:])),1,self.cellsPortion.reshape((self.cellsPortion.shape[0],np.product(self.cellsPortion.shape[1:]))))            
+    threads = []
+    n = multiprocessing.cpu_count()
+    p = math.ceil(len(cellsArray)/n)
+    for i in range(n):
+        thread = HashCellsThread(cellsArray[i*p:(i+1)*p])
+        thread.start()
+        threads.append(thread)
+    for thread in threads:
+        thread.join()
+    return np.concatenate([t.hashes for t in threads])
     
 def formatMinimaxTrainData(cells,values,validation = 1/16):
-    hashes = np.apply_along_axis(lambda w:hashCells(w.reshape(cells.shape[1:])),1,cells.reshape((cells.shape[0],np.product(cells.shape[1:]))))
+    hashes = hashCellsArray(cells)
     validation = hashes/(sys.maxsize+1) < validation * 2 - 1
     train = np.logical_not(validation)
     input = np.zeros(cells.shape + (3,))
