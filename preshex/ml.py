@@ -282,6 +282,7 @@ def terminalSmallMinimaxes(moveTree, predictor = None,  target = None, initialSi
                 if not reached:
                     keepOn = False
                     yield minimax
+                    break
                 size += deltaSize
         else:
             if keepOn:
