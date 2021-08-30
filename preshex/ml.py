@@ -373,7 +373,7 @@ def hashCells(cells):
     return int.from_bytes(digest, byteorder = "big", signed = True)
 
 def hashCellsArray(cellsArray):
-    return np.apply_along_axis(lambda w:hashCells(w.reshape(cellsArray.shape[1:])),1,cellsArray.reshape((cellsArray.shape[0],np.product(cellsArray.shape[1:]))))    
+    return np.array(list(map(hashCells,cellsArray)))    
 
 def hashCellsArrayMultiThreaded(cellsArray):
     class HashCellsThread(Thread):
@@ -394,7 +394,7 @@ def hashCellsArrayMultiThreaded(cellsArray):
     return np.concatenate([t.hashes for t in threads])
     
 def formatMinimaxTrainData(cells,values,validation = 1/16):
-    hashes = hashCellsArrayMultiThreaded(cells)
+    hashes = hashCellsArray(cells)
     validation = hashes/(sys.maxsize+1) < validation * 2 - 1
     train = np.logical_not(validation)
     input = np.zeros(cells.shape + (3,))
