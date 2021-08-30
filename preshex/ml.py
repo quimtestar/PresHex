@@ -373,12 +373,15 @@ def hashCells(cells):
     return int.from_bytes(digest, byteorder = "big", signed = True)
 
 def hashCellsArray(cellsArray):
+    return np.apply_along_axis(lambda w:hashCells(w.reshape(cellsArray.shape[1:])),1,cellsArray.reshape((cellsArray.shape[0],np.product(cellsArray.shape[1:]))))    
+
+def hashCellsArrayMultiThreaded(cellsArray):
     class HashCellsThread(Thread):
         def __init__(self,cellsPortion):
             super().__init__(name = "hashCells")
             self.cellsPortion = cellsPortion
         def run(self):
-            self.hashes = np.apply_along_axis(lambda w:hashCells(w.reshape(self.cellsPortion.shape[1:])),1,self.cellsPortion.reshape((self.cellsPortion.shape[0],np.product(self.cellsPortion.shape[1:]))))            
+            self.hashes = hashCellsArray(self.cellsPortion)
     threads = []
     n = multiprocessing.cpu_count()
     p = math.ceil(len(cellsArray)/n)
@@ -391,7 +394,7 @@ def hashCellsArray(cellsArray):
     return np.concatenate([t.hashes for t in threads])
     
 def formatMinimaxTrainData(cells,values,validation = 1/16):
-    hashes = hashCellsArray(cells)
+    hashes = hashCellsArrayMultiThreaded(cells)
     validation = hashes/(sys.maxsize+1) < validation * 2 - 1
     train = np.logical_not(validation)
     input = np.zeros(cells.shape + (3,))
