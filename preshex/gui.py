@@ -328,7 +328,7 @@ class BoardWidget(QWidget):
                 self.minimaxWorker.moveWhenFinished = False
                 self.minimaxWorker.abort()
         elif event.key() == Qt.Key_F7:
-            self.presHexMainWindow.updateBoardSize(force = True)
+            self.presHexMainWindow.reset()
                 
     def pruneMinimax(self):
         try:
@@ -422,12 +422,13 @@ class PresHexMainWindow(QMainWindow):
         self.preferences = PresHexPreferences()
         self.preferencesDialog = PreferencesDialog(self)
         fileMenu = QMenu("&File", self)
-        fileMenu.addAction("&Preferences", self.preferencesDialogExec)
+        fileMenu.addAction("&Preferences", self.preferencesDialogExec, QKeySequence(Qt.Key_F2))
+        fileMenu.addAction("&Reset", self.reset, QKeySequence(Qt.Key_F7))
         fileMenu.addAction("&Exit", self.exit)
         self.menuBar().addMenu(fileMenu)
         thinkMenu = QMenu("&Think", self)
-        self.startThinkingAction = thinkMenu.addAction("&Start", self.startThinking, QKeySequence(Qt.Key_Space))
-        self.stopThinkingAction = thinkMenu.addAction("&Stop", self.stopThinking, QKeySequence(Qt.Key_Space))
+        self.startThinkingAction = thinkMenu.addAction("&Start", self.startThinking, QKeySequence(Qt.Key_F1))
+        self.stopThinkingAction = thinkMenu.addAction("&Stop", self.stopThinking, QKeySequence(Qt.Key_F1))
         self.stopThinkingAction.setEnabled(False)
         self.pruneMinimaxAction = thinkMenu.addAction("&Prune memory", self.pruneMinimax)
         self.purgeMinimaxAction = thinkMenu.addAction("&Purge memory", self.purgeMinimax)
@@ -439,6 +440,9 @@ class PresHexMainWindow(QMainWindow):
         centralWidget = self.centralWidget()
         if isinstance(centralWidget,BoardWidget):
             return centralWidget
+        
+    def reset(self):
+        self.updateBoardSize(force = True)
         
     def updateBoardSize(self, force = False):
         boardWidget = self.boardWidget()
