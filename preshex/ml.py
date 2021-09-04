@@ -375,7 +375,7 @@ def hashCells(cells):
 def hashCellsArray(cellsArray):
     return np.array(list(map(hashCells,cellsArray)))    
 
-def hashCellsArrayMultiThreaded(cellsArray):
+def hashCellsArrayMultiThreaded(cellsArray, n = multiprocessing.cpu_count()):
     class HashCellsThread(Thread):
         def __init__(self,cellsPortion):
             super().__init__(name = "hashCells")
@@ -383,7 +383,6 @@ def hashCellsArrayMultiThreaded(cellsArray):
         def run(self):
             self.hashes = hashCellsArray(self.cellsPortion)
     threads = []
-    n = multiprocessing.cpu_count()
     p = math.ceil(len(cellsArray)/n)
     for i in range(n):
         thread = HashCellsThread(cellsArray[i*p:(i+1)*p])
@@ -393,10 +392,7 @@ def hashCellsArrayMultiThreaded(cellsArray):
         thread.join()
     return np.concatenate([t.hashes for t in threads])
     
-def formatMinimaxTrainData(cells,values,validation = 1/16):
-    hashes = hashCellsArray(cells)
-    validation = hashes/(sys.maxsize+1) < validation * 2 - 1
-    train = np.logical_not(validation)
+def formatMinimaxData(cells,values):
     input = np.zeros(cells.shape + (3,))
     output = np.zeros(values.shape + (1,))
     input[:,0,:,1] = 1
@@ -405,9 +401,15 @@ def formatMinimaxTrainData(cells,values,validation = 1/16):
     input[:,:,-1,-1] = -1
     input[:,:,:,0] = cells
     output[:,0] = values
-    x,y = input[train], output[train]
-    x_val, y_val = input[validation], output[validation]
-    return x,y,x_val,y_val
+    return input, output
+    
+def formatMinimaxTrainValidationData(cells,values,validation = 1/16):
+    hashes = hashCellsArray(cells)
+    validation = hashes/(sys.maxsize+1) < validation * 2 - 1
+    train = np.logical_not(validation)
+    x, y = formatMinimaxData(cells[train], values[train])
+    x_val, y_val = formatMinimaxData(cells[validation], values[validation])
+    return x, y, x_val, y_val
  
 def dataMinError(dataFile):
     data = np.load(dataFile)
@@ -428,7 +430,7 @@ def minimaxTrain(dataFile,modelFile,fraction = 1, validation = 1/16):
     pick = np.random.random(len(cells)) < fraction
     cells = cells[pick]
     values = values[pick]
-    x, y, x_val, y_val = formatMinimaxTrainData(cells,values,validation)
+    x, y, x_val, y_val = formatMinimaxTrainValidationData(cells,values,validation)
     print(f"training: {len(x)}\tvalidation: {len(x_val)}\tratio: {len(x_val)/len(x)}")
     del cells, values
     model = load_model(modelFile)
