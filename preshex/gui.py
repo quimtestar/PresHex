@@ -256,6 +256,7 @@ class BoardWidget(QWidget):
             self.thread.finished.connect(self.thread.deleteLater)
             self.finished.connect(self.thread.quit)
             self.aborted_ = False
+            self.stopped_ = False
         
         def start(self):
             self.thread.start()
@@ -267,7 +268,7 @@ class BoardWidget(QWidget):
         def run(self):
             threading.current_thread().setName("Minimax")
             try:
-                self.minimax.expand(self.size, self.margin, status = self.statusEmit, aborted = self.aborted)
+                self.minimax.expand(self.size, self.margin, status = self.statusEmit, aborted = self.abortedOrStopped)
             except Exception as e:
                 traceback.print_exc()
                 self.abort()
@@ -280,6 +281,15 @@ class BoardWidget(QWidget):
             
         def aborted(self):
             return self.aborted_
+        
+        def stop(self):
+            self.stopped_ = True
+            
+        def stopped(self):
+            return self.stopped_
+        
+        def abortedOrStopped(self):
+            return self.aborted() or self.stopped()
         
         def statusEmit(self,s):
             self.status.emit(s)
@@ -297,7 +307,7 @@ class BoardWidget(QWidget):
             
     def stopMinimax(self):
         if self.minimaxWorker:
-            self.minimaxWorker.abort()
+            self.minimaxWorker.stop()
        
     def abortMinimax(self):     
         if self.minimaxWorker:
