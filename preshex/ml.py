@@ -17,6 +17,8 @@ from abc import ABC, abstractmethod
 import traceback
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
+import tempfile
+import os
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -189,6 +191,7 @@ class ModelPredictor(Predictor):
 
     def run(self):
         with self.condition:
+            tf.keras.backend.clear_session()
             config = tf.ConfigProto()
             config.gpu_options.allow_growth = True
             set_session(tf.Session(config=config))
@@ -259,7 +262,7 @@ class ModelPredictor(Predictor):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
         
-def terminalSmallMinimaxes(moveTree, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1):
+def terminalSmallMinimaxes(moveTree, predictor = None,  target = None, initialSize = 0, deltaSize = 2048, selectionExponent = 1, statusInterval = 10):
     if predictor is None:
         predictor = VoidPredictor(moveTree.board.size)
     minimax = Minimax(heuristic = predictor.predict) if predictor else Minimax()
@@ -276,7 +279,7 @@ def terminalSmallMinimaxes(moveTree, predictor = None,  target = None, initialSi
             size = initialSize
             for board in game[::-1]:
                 minimax.setRootBoard(board)
-                reached = minimax.expand(size,1024,target = target,statusInterval = 10 * multiprocessing.cpu_count())
+                reached = minimax.expand(size,1024,target = target,statusInterval = statusInterval)
                 if not reached:
                     keepOn = False
                     yield minimax
@@ -285,7 +288,7 @@ def terminalSmallMinimaxes(moveTree, predictor = None,  target = None, initialSi
         else:
             if keepOn:
                 minimax.setRootBoard(board)
-                reached = minimax.expand(size,1024,target = target,statusInterval = 10 * multiprocessing.cpu_count())
+                reached = minimax.expand(size,1024,target = target,statusInterval = statusInterval)
                 if not reached:
                     keepOn = False
                     yield minimax
@@ -334,7 +337,7 @@ def generateMinimaxTrainDataPredictor(
                 else:
                     x = random.random()
                     target = 1/targetAlpha * math.log(x * math.exp(targetAlpha) + (1 - x) * math.exp(targetAlpha * targetFrom))
-                for minimax in terminalSmallMinimaxes(moveTree,predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent):
+                for minimax in terminalSmallMinimaxes(moveTree,predictor,target = target,deltaSize = deltaSize, selectionExponent = selectionExponent, statusInterval = 10 * processes):
                     with lock:
                         for board,value in minimax.collectLeafValues(terminal = terminal):
                             cells.append(board.cells)
@@ -483,7 +486,6 @@ def minimaxTrain(dataFile,modelFile,fraction = 1, validation = 1/16):
                 model.save(modelFile)
                 lastLoss = loss
 
-  
 def dataGenerator(cells,values,batchSize,steps,randomization):
     input = np.zeros((batchSize,) + cells.shape[1:] + (3,))
     input[:,0,:,1] = 1
@@ -502,17 +504,39 @@ def dataGenerator(cells,values,batchSize,steps,randomization):
         output[:len(v),0] = v
         yield input[:len(c)], output[:len(v)]
  
-def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14):
-    data = np.load(dataFile)
-    cells = data["cells"][:maxDataSize]
-    values = data["values"][:maxDataSize]
+def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14, selectionExponent = 1, terminal = False):
+    try:
+        data = np.load(dataFile)
+        cells = data["cells"]
+        values = data["values"]
+    except IOError:
+        with ModelPredictor(boardSize,modelFile) as predictor:
+            cells, values = generateMinimaxTrainDataPredictor(
+                boardSize, 
+                predictor, 
+                moveTreeUsage = moveTreeUsage, 
+                targetFrom = targetFrom, 
+                targetAlpha = targetAlpha, 
+                size = 0, 
+                deltaSize = deltaSize, 
+                selectionExponent = selectionExponent, 
+                terminal = terminal, 
+                processes = 1
+            )
+        np.savez(dataFile,cells = cells,values = values)
+        tf.keras.backend.clear_session()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        set_session(tf.Session(config=config))
+        tf.get_logger().setLevel('INFO')
+    assert len(cells) == len(values)
+    if len(cells) > maxDataSize:
+        cells = cells[len(cells) - maxDataSize:]
+        values = values[len(values) - maxDataSize:]
     hashes = hashCellsArray(cells)
     validation = hashes/(sys.maxsize+1) < validation * 2 - 1
     train = np.logical_not(validation)
-    stepsValidation = math.ceil(np.count_nonzero(validation)/batchSize)
-    stepsTrain = math.ceil(np.count_nonzero(train)/batchSize)
     print(f"training: {len(cells)}\tvalidation: {np.count_nonzero(validation)}\tratio: {np.count_nonzero(validation)/len(cells)}")
-
     model = load_model(modelFile)
     model.summary()
     lossHistory = [np.inf] * patience
@@ -541,6 +565,10 @@ def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize
         oldLoss = lossHistory[round%patience]
         lossHistory[round%patience] = loss
         if loss >= oldLoss:
+            del x, y, x_val, y_val
+            tmpModelFileDescriptor, tmpModelFile = tempfile.mkstemp()
+            os.close(tmpModelFileDescriptor)
+            model.save(tmpModelFile)
             with ModelPredictor(boardSize,modelFile) as predictor:
                 cells_, values_ = generateMinimaxTrainDataPredictor(
                     boardSize, 
@@ -554,17 +582,27 @@ def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize
                     terminal = terminal, 
                     processes = 1
                 )
-            if len(cells_) < maxDataSize:
-                cells = np.concatenate((cells[:maxDataSize - len(cells_)],cells_))
-                values = np.concatenate((values[:maxDataSize - len(cells_)],values_))
+                assert len(cells_) == len(values_)
+            if len(cells_) + len(cells) > maxDataSize:
+                cells = np.concatenate((cells[len(cells) + len(cells_) - maxDataSize:],cells_))
+                values = np.concatenate((values[len(values) + len(values_) - maxDataSize:],values_))
             else:
-                cells = cells_[:maxDataSize]
-                values = values_[:maxDataSize]
-            
+                cells = np.concatenate((cells,cells_))
+                values = np.concatenate((values,values_))
+            np.savez(dataFile,cells = cells,values = values)
+            x, y, x_val, y_val = formatMinimaxTrainValidationData(cells,values,validation)
+            print(f"training: {len(x)}\tvalidation: {len(x_val)}\tratio: {len(x_val)/len(x)}")
+            tf.keras.backend.clear_session()
             config = tf.ConfigProto()
             config.gpu_options.allow_growth = True
             set_session(tf.Session(config=config))
             tf.get_logger().setLevel('INFO')
+            lossHistory = [np.inf] * patience
+            model_ = load_model(modelFile)
+            lastValLoss = model_.evaluate(x_val,y_val,verbose = 2)
+            print(f"Updated valLoss: {lastValLoss}")
+            model = load_model(tmpModelFile)
+            os.unlink(tmpModelFile)
             
         round += 1
         
@@ -626,7 +664,6 @@ def modelWeightsFromBase(modelFileBase,modelFile):
     modelBase = load_model(modelFileBase)
     model = load_model(modelFile)
     for i,layer in enumerate(model.layers):
-        """
         if i in (4,8,12):
             w = layer.get_weights()
             w[0][:] = 0
@@ -643,6 +680,7 @@ def modelWeightsFromBase(modelFileBase,modelFile):
             s = tuple(slice(0,n) for n in a0.shape)
             a[s] = a0
         layer.set_weights(w)
+        """
     model.save(modelFile)
 
 def modelWeightsFromPrevious(modelFilePrevious,modelFile):
@@ -719,7 +757,8 @@ if __name__ == '__main__':
     #successRatioAgainstVoid(5,"model5.h5")
     #successRatioAgainstOther(5,"model5.h5","model5_old.h5")
     #generateSaveModel(5,24,1,"model5_new.h5")
-    #modelWeightsFromBase("model5.h5","model5_new.h5")
+    #modelWeightsFromBase("model5.h5","model5_new.h5")    del cells, values
+
     #minimaxTrain("data5.npz","model5_new.h5")
     #modelAlter("model5_new.h5")
     #successRatioAgainstOther(5,"model5_new.h5","model5.h5")
@@ -727,28 +766,16 @@ if __name__ == '__main__':
     
     #generateSaveModel(7,24,2,"model7_.h5")
     #modelWeightsFromPrevious("model5.h5","model7_.h5")
-    #saveMinimaxTrainData(7,"data7.npz","model7.h5",moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, size = 2**22, deltaSize = 2**14)
+    #saveMinimaxTrainData(7,"data7.npz","model7.h5",moveTreeUsage = 0.125, targetFrom = 0.5, targetAlpha = math.log(2)/0.05, size = 2**22, deltaSize = 2**14)
     #minimaxTrain("data7.npz","model7.h5")
-    progressiveTrain(7,"data7.npz","model7.h5", maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14)
-    #successRatioAgainstOther(7,"model7.h5","model7_old.h5")
-    #successRatioAgainstVoid(7,"model7.h5")
-    #generateSaveModel(7,48,2,"model7_new.h5")
+    progressiveTrain(7,"data7.npz","model7_new.h5", maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.125,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14, selectionExponent = 0.5)
+    #successRatioAgainstOther(7,"model7.h5","model7_old2.h5")
+    #generateSaveModel(7,40,3,"model7_new.h5")
     #modelWeightsFromBase("model7.h5","model7_new.h5")
     #minimaxTrain("data7.npz","model7_new.h5")
+    #saveMinimaxTrainData(7,"data7_mt.npz","model7_new.h5",useMoveTrees = True, targetFrom = 0.5, targetAlpha = math.log(2)/0.05, size = 2**22, deltaSize = 2**14)
+    #minimaxTrain("data7_mt.npz","model7_new.h5")
     #successRatioAgainstOther(7,"model7_new.h5","model7.h5")
-    #generateSaveModel(7,32,3,"model7_new2.h5")
-    #modelWeightsFromBase("model7.h5","model7_new2.h5")
-    #minimaxTrain("data7.npz","model7_new2.h5")
-    #generateSaveModel(7,40,2,"model7_new3.h5")
-    #modelWeightsFromBase("model7.h5","model7_new3.h5")
-    #minimaxTrain("data7.npz","model7_new3.h5")
-
-    #successRatioAgainstOther(7,"model7_new.h5","model7.h5")
-    #successRatioAgainstOther(7,"model7_new2.h5","model7.h5")
-    #successRatioAgainstOther(7,"model7_new3.h5","model7.h5")
-    #successRatioAgainstOther(7,"model7_new2.h5","model7_new.h5")
-    #successRatioAgainstOther(7,"model7_new3.h5","model7_new.h5")
-    #successRatioAgainstOther(7,"model7_new3.h5","model7_new2.h5")
 
 
     
