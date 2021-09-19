@@ -431,7 +431,6 @@ def dataMinError(dataFile):
         means[i] = np.mean(values[i])
     return np.mean(np.abs(values-means))
     
-    
 def minimaxTrain(dataFile,modelFile,fraction = 1, validation = 1/16):
     data = np.load(dataFile)
     cells = data["cells"]
@@ -483,29 +482,56 @@ def minimaxTrain(dataFile,modelFile,fraction = 1, validation = 1/16):
             if loss < lastLoss:
                 model.save(modelFile)
                 lastLoss = loss
-    
-def progressiveTrain(boardSize, dataFile, modelFile, maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14):
+
+  
+def dataGenerator(cells,values,batchSize,steps,randomization):
+    input = np.zeros((batchSize,) + cells.shape[1:] + (3,))
+    input[:,0,:,1] = 1
+    input[:,-1,:,1] = 1
+    input[:,:,0,-1] = -1
+    input[:,:,-1,-1] = -1
+    output = np.zeros((batchSize,) + values.shape[1:] + (1,))
+    if randomization:
+        r = np.random.permutation(steps)
+    else:
+        r = range(steps)
+    for i in r:
+        c = cells[i*batchSize:(i+1)*batchSize]
+        v = values[i*batchSize:(i+1)*batchSize]
+        input[:len(c),:,:,0] = c
+        output[:len(v),0] = v
+        yield input[:len(c)], output[:len(v)]
+ 
+def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14):
     data = np.load(dataFile)
     cells = data["cells"][:maxDataSize]
     values = data["values"][:maxDataSize]
-    x, y, x_val, y_val = formatMinimaxTrainValidationData(cells,values,validation)
-    print(f"training: {len(x)}\tvalidation: {len(x_val)}\tratio: {len(x_val)/len(x)}")
+    hashes = hashCellsArray(cells)
+    validation = hashes/(sys.maxsize+1) < validation * 2 - 1
+    train = np.logical_not(validation)
+    stepsValidation = math.ceil(np.count_nonzero(validation)/batchSize)
+    stepsTrain = math.ceil(np.count_nonzero(train)/batchSize)
+    print(f"training: {len(cells)}\tvalidation: {np.count_nonzero(validation)}\tratio: {np.count_nonzero(validation)/len(cells)}")
+
     model = load_model(modelFile)
     model.summary()
     lossHistory = [np.inf] * patience
-    lastValLoss = model.evaluate(x_val,y_val,verbose = 2)
+             
+    lastValLoss = model.evaluate_generator(dataGenerator(cells[validation],values[validation],batchSize,stepsValidation,False),steps = stepsValidation,verbose = 2)
+    
     print(f"Initial valLoss: {lastValLoss}")
     round = 0
     while True:
         t0 = time.time()
-        history = model.fit(
-                x,
-                y,
-                batch_size = 64,
-                shuffle = True,
+        history = model.fit_generator(
+                dataGenerator(cells[train],values[train],batchSize,stepsTrain,True),
+                steps_per_epoch = stepsTrain,
                 epochs = 1,
                 verbose = 0,
-                validation_data = (x_val, y_val))
+                validation_data = dataGenerator(cells[validation],values[validation],batchSize,stepsValidation,False),
+                validation_steps = stepsValidation
+            )
+        
         loss = history.history["loss"][-1]
         valLoss = history.history['val_loss'][-1]
         print(f"round: {round}\tdtime:{time.time()-t0}\tloss: {loss}\tvalLoss: {valLoss}\t{'(*)' if valLoss < lastValLoss else ''}")
