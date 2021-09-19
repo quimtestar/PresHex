@@ -536,6 +536,8 @@ def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize
     hashes = hashCellsArray(cells)
     validation = hashes/(sys.maxsize+1) < validation * 2 - 1
     train = np.logical_not(validation)
+    stepsValidation = math.ceil(np.count_nonzero(validation)/batchSize)
+    stepsTrain = math.ceil(np.count_nonzero(train)/batchSize)
     print(f"training: {len(cells)}\tvalidation: {np.count_nonzero(validation)}\tratio: {np.count_nonzero(validation)/len(cells)}")
     model = load_model(modelFile)
     model.summary()
