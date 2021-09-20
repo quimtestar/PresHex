@@ -487,12 +487,6 @@ def minimaxTrain(dataFile,modelFile,fraction = 1, validation = 1/16):
                 lastLoss = loss
 
 def dataGenerator(cells,values,batchSize,steps,randomization):
-    input = np.zeros((batchSize,) + cells.shape[1:] + (3,))
-    input[:,0,:,1] = 1
-    input[:,-1,:,1] = 1
-    input[:,:,0,-1] = -1
-    input[:,:,-1,-1] = -1
-    output = np.zeros((batchSize,) + values.shape[1:] + (1,))
     if randomization:
         r = np.random.permutation(steps)
     else:
@@ -500,9 +494,15 @@ def dataGenerator(cells,values,batchSize,steps,randomization):
     for i in r:
         c = cells[i*batchSize:(i+1)*batchSize]
         v = values[i*batchSize:(i+1)*batchSize]
-        input[:len(c),:,:,0] = c
-        output[:len(v),0] = v
-        yield input[:len(c)], output[:len(v)]
+        input = np.zeros(c.shape + (3,))
+        input[:,0,:,1] = 1
+        input[:,-1,:,1] = 1
+        input[:,:,0,-1] = -1
+        input[:,:,-1,-1] = -1
+        output = np.zeros(v.shape + (1,))
+        input[:,:,:,0] = c
+        output[:,0] = v
+        yield input, output
  
 def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14, selectionExponent = 1, terminal = False):
     try:
@@ -542,9 +542,7 @@ def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize
     model = load_model(modelFile)
     model.summary()
     lossHistory = [np.inf] * patience
-             
     lastValLoss = model.evaluate_generator(dataGenerator(cells[validation],values[validation],batchSize,stepsValidation,False),steps = stepsValidation,verbose = 2)
-    
     print(f"Initial valLoss: {lastValLoss}")
     round = 0
     while True:
