@@ -505,14 +505,17 @@ def dataGenerator(cells,values,batchSize,steps,shuffle):
         output[:,0] = v
         yield input, output
  
-def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize = 10*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14, selectionExponent = 1, terminal = False):
+def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, minDataSize = 10*2**20, maxDataSize = 10*2**20, validationSplit = 1/16, patience = 1, moveTreeUsage = 0.5,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14, selectionExponent = 1, terminal = False):
     try:
         data = np.load(dataFile)
         cells = data["cells"]
         values = data["values"]
     except IOError:
+        cells = []
+        values = []
+    while len(cells) < minDataSize:
         with ModelPredictor(boardSize,modelFile) as predictor:
-            cells, values = generateMinimaxTrainDataPredictor(
+            cells_, values_ = generateMinimaxTrainDataPredictor(
                 boardSize, 
                 predictor, 
                 moveTreeUsage = moveTreeUsage, 
@@ -524,18 +527,25 @@ def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize
                 terminal = terminal, 
                 processes = 1
             )
-        np.savez(dataFile,cells = cells,values = values)
-        tf.keras.backend.clear_session()
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        set_session(tf.Session(config=config))
-        tf.get_logger().setLevel('INFO')
-    assert len(cells) == len(values)
+        if len(cells_) + len(cells) > maxDataSize:
+            cells = np.concatenate((cells[len(cells) + len(cells_) - maxDataSize:],cells_))
+            values = np.concatenate((values[len(values) + len(values_) - maxDataSize:],values_))
+            break
+        else:
+            cells = np.concatenate((cells,cells_))
+            values = np.concatenate((values,values_))
     if len(cells) > maxDataSize:
         cells = cells[len(cells) - maxDataSize:]
         values = values[len(values) - maxDataSize:]
+    np.savez(dataFile,cells = cells,values = values)
+    tf.keras.backend.clear_session()
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    set_session(tf.Session(config=config))
+    tf.get_logger().setLevel('INFO')
+    assert len(cells) == len(values)
     hashes = hashCellsArray(cells)
-    validation = hashes/(sys.maxsize+1) < validation * 2 - 1
+    validation = hashes/(sys.maxsize+1) < validationSplit * 2 - 1
     train = np.logical_not(validation)
     stepsValidation = math.ceil(np.count_nonzero(validation)/batchSize)
     stepsTrain = math.ceil(np.count_nonzero(train)/batchSize)
@@ -591,11 +601,11 @@ def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize
                 values = np.concatenate((values,values_))
             np.savez(dataFile,cells = cells,values = values)
             hashes = hashCellsArray(cells)
-            validation = hashes/(sys.maxsize+1) < validation * 2 - 1
+            validation = hashes/(sys.maxsize+1) < validationSplit * 2 - 1
             train = np.logical_not(validation)
             stepsValidation = math.ceil(np.count_nonzero(validation)/batchSize)
             stepsTrain = math.ceil(np.count_nonzero(train)/batchSize)
-            print(f"total: {len(cells)}\ttraining: {np.count_nonzero(training)}\tvalidation: {np.count_nonzero(validation)}\tratio: {np.count_nonzero(validation)/len(cells)}")
+            print(f"total: {len(cells)}\ttraining: {np.count_nonzero(train)}\tvalidation: {np.count_nonzero(validation)}\tratio: {np.count_nonzero(validation)/len(cells)}")
             tf.keras.backend.clear_session()
             config = tf.ConfigProto()
             config.gpu_options.allow_growth = True
@@ -603,7 +613,7 @@ def progressiveTrain(boardSize, dataFile, modelFile, batchSize = 64, maxDataSize
             tf.get_logger().setLevel('INFO')
             lossHistory = [np.inf] * patience
             model_ = load_model(modelFile)
-            lastValLoss = model_.evaluate(x_val,y_val,verbose = 2)
+            lastValLoss = model_.evaluate_generator(dataGenerator(cells[validation],values[validation],batchSize,stepsValidation,False),steps = stepsValidation,verbose = 2)
             print(f"Updated valLoss: {lastValLoss}")
             model = load_model(tmpModelFile)
             os.unlink(tmpModelFile)
@@ -772,14 +782,14 @@ if __name__ == '__main__':
     #modelWeightsFromPrevious("model5.h5","model7_.h5")
     #saveMinimaxTrainData(7,"data7.npz","model7.h5",moveTreeUsage = 0.125, targetFrom = 0.5, targetAlpha = math.log(2)/0.05, size = 2**22, deltaSize = 2**14)
     #minimaxTrain("data7.npz","model7.h5")
-    progressiveTrain(7,"data7.npz","model7_new.h5", maxDataSize = 50*2**20, validation = 1/16, patience = 1, moveTreeUsage = 0.125,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14, selectionExponent = 0.5)
+    #progressiveTrain(7,"data7.npz","model7_new.h5", minDataSize = 10*2**20, maxDataSize = 30*2**20, validationSplit = 1/16, patience = 1, moveTreeUsage = 0.125,targetFrom = 0.5, targetAlpha = math.log(2)/0.05, deltaSize = 2**14, selectionExponent = 0.5)
     #successRatioAgainstOther(7,"model7.h5","model7_old2.h5")
     #generateSaveModel(7,40,3,"model7_new.h5")
     #modelWeightsFromBase("model7.h5","model7_new.h5")
     #minimaxTrain("data7.npz","model7_new.h5")
-    #saveMinimaxTrainData(7,"data7_mt.npz","model7_new.h5",useMoveTrees = True, targetFrom = 0.5, targetAlpha = math.log(2)/0.05, size = 2**22, deltaSize = 2**14)
+    #saveMinimaxTrainData(7,"data7_01.npz","model7_new.h5",moveTreeUsage = 0.125, targetFrom = 0.5, targetAlpha = math.log(2)/0.05, size = 2**22, deltaSize = 2**14, selectionExponent = 0.5)
     #minimaxTrain("data7_mt.npz","model7_new.h5")
-    #successRatioAgainstOther(7,"model7_new.h5","model7.h5")
+    successRatioAgainstOther(7,"model7_new.h5","model7.h5")
 
 
     
